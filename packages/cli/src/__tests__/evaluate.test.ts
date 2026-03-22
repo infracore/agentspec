@@ -28,6 +28,8 @@ vi.mock('@agentspec/sdk', () => ({
 vi.mock('node:fs', () => ({
   readFileSync: mockReadFileSync,
   existsSync: mockExistsSync,
+  // realpathSync is used for symlink-escape checking — return the path unchanged in tests
+  realpathSync: (p: string) => p,
 }))
 
 // Mock global fetch

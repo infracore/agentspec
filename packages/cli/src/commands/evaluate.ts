@@ -1,5 +1,5 @@
 import type { Command } from 'commander'
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync, existsSync, realpathSync } from 'node:fs'
 import { resolve, dirname, sep } from 'node:path'
 import chalk from 'chalk'
 import { loadManifest } from '@agentspec/sdk'
@@ -284,7 +284,8 @@ export function registerEvaluateCommand(program: Command): void {
         const relPath = rawPath.startsWith('$file:') ? rawPath.slice(6) : rawPath
         const absPath = resolve(manifestDir, relPath)
 
-        // Guard against path traversal (e.g. ../../etc/hosts in the manifest)
+        // Guard against path traversal and symlink escapes.
+        // Step 1: lexical prefix check (fast, catches ../.. patterns).
         const safeBase = manifestDir.endsWith(sep) ? manifestDir : manifestDir + sep
         if (absPath !== manifestDir && !absPath.startsWith(safeBase)) {
           printError(
@@ -293,11 +294,34 @@ export function registerEvaluateCommand(program: Command): void {
           )
           process.exit(1)
         }
+        // Step 2: resolve symlinks and re-check so a symlink inside manifestDir
+        // that points outside cannot bypass the prefix guard.
+        let realAbsPath: string
+        try {
+          realAbsPath = realpathSync(absPath)
+        } catch {
+          printError(`Dataset path "${relPath}" could not be resolved: file may not exist.`)
+          process.exit(1)
+        }
+        let realBase: string
+        try {
+          realBase = realpathSync(manifestDir)
+        } catch {
+          realBase = manifestDir
+        }
+        const safeRealBase = realBase.endsWith(sep) ? realBase : realBase + sep
+        if (realAbsPath !== realBase && !realAbsPath.startsWith(safeRealBase)) {
+          printError(
+            `Dataset path "${relPath}" resolves via symlink outside the manifest directory. ` +
+            `Only paths within the same directory tree are allowed.`,
+          )
+          process.exit(1)
+        }
 
         // ── Load samples ───────────────────────────────────────────────────────
         let samples: DatasetSample[]
         try {
-          samples = loadDataset(absPath)
+          samples = loadDataset(realAbsPath)
         } catch (err) {
           printError(`Cannot load dataset: ${String(err)}`)
           process.exit(1)

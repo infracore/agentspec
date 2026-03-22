@@ -26,9 +26,13 @@ const { mockCreateConnection } = vi.hoisted(() => ({
   >(),
 }))
 
-vi.mock('node:net', () => ({
-  createConnection: mockCreateConnection,
-}))
+vi.mock('node:net', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:net')>()
+  return {
+    ...actual,
+    createConnection: mockCreateConnection,
+  }
+})
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -330,9 +334,20 @@ describe('runServiceChecks — RFC 1918 private address SSRF protection (SEC-08)
   })
 
   it('does NOT skip 172.32.x.x (outside 172.16.0.0/12)', async () => {
-    // 172.32.x.x is NOT in the RFC 1918 range — should be attempted
     const checks = await runServiceChecks([{ type: 'redis', connection: 'redis://172.32.0.1:6379' }])
-    // Status will be pass or fail (TCP attempt), not skip due to RFC 1918
+    expect(checks[0].message ?? '').not.toContain('RFC 1918')
+  })
+
+  it('does NOT block a hostname that starts with "10." (false-positive fix)', async () => {
+    // "10.example.com" starts with "10." but is a hostname, not an RFC 1918 IP.
+    // Before the net.isIP fix this would have been incorrectly blocked.
+    const checks = await runServiceChecks([{ type: 'redis', connection: 'redis://10.example.com:6379' }])
+    expect(checks[0].message ?? '').not.toContain('RFC 1918')
+    expect(checks[0].message ?? '').not.toContain('10.0.0.0')
+  })
+
+  it('does NOT block a hostname that starts with "192.168." (false-positive fix)', async () => {
+    const checks = await runServiceChecks([{ type: 'redis', connection: 'redis://192.168.example.com:6379' }])
     expect(checks[0].message ?? '').not.toContain('RFC 1918')
   })
 })
