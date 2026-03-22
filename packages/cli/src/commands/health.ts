@@ -1,7 +1,37 @@
+import { existsSync, readFileSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 import type { Command } from 'commander'
 import chalk from 'chalk'
 import { loadManifest, runHealthCheck, type HealthCheck } from '@agentspec/sdk'
-import { symbols, formatSeverity, formatHealthStatus, printHeader, printError } from '../utils/output.js'
+import { symbols, formatHealthStatus, printHeader, printError } from '../utils/output.js'
+
+// ── .env loader ───────────────────────────────────────────────────────────────
+
+/**
+ * Parse a .env file and inject missing keys into process.env.
+ * Only sets vars that are not already set (environment wins over .env).
+ */
+function loadDotEnv(envPath: string): void {
+  let raw: string
+  try {
+    raw = readFileSync(envPath, 'utf-8')
+  } catch {
+    return
+  }
+  for (const line of raw.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('#')) continue
+    const eqIdx = trimmed.indexOf('=')
+    if (eqIdx < 1) continue
+    const key = trimmed.slice(0, eqIdx).trim()
+    const val = trimmed.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, '')
+    if (key && !(key in process.env)) {
+      process.env[key] = val
+    }
+  }
+}
+
+// ── Command ───────────────────────────────────────────────────────────────────
 
 export function registerHealthCommand(program: Command): void {
   program
@@ -13,6 +43,7 @@ export function registerHealthCommand(program: Command): void {
     .option('--no-model', 'Skip model API reachability checks')
     .option('--no-mcp', 'Skip MCP server checks')
     .option('--no-memory', 'Skip memory backend checks')
+    .option('--env-file <path>', 'Load env vars from a .env file before running checks')
     .action(
       async (
         file: string,
@@ -23,8 +54,19 @@ export function registerHealthCommand(program: Command): void {
           model?: boolean
           mcp?: boolean
           memory?: boolean
+          envFile?: string
         },
       ) => {
+        // Load env vars before any checks so $env: refs resolve correctly.
+        // Explicit --env-file wins; otherwise auto-detect .env beside the manifest.
+        const manifestDir = dirname(resolve(file))
+        const envFilePath = opts.envFile
+          ? resolve(opts.envFile)
+          : join(manifestDir, '.env')
+        if (existsSync(envFilePath)) {
+          loadDotEnv(envFilePath)
+        }
+
         let manifest: Awaited<ReturnType<typeof loadManifest>>
         try {
           manifest = loadManifest(file, { resolve: false })
@@ -95,7 +137,7 @@ function groupByCategory(checks: HealthCheck[]): Record<string, HealthCheck[]> {
   const groups: Record<string, HealthCheck[]> = {}
   for (const check of checks) {
     if (!groups[check.category]) groups[check.category] = []
-    groups[check.category]!.push(check)
+    groups[check.category].push(check)
   }
   return groups
 }

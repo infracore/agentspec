@@ -348,22 +348,22 @@ describe('generateWithClaude()', () => {
     })
 
     it('uses ANTHROPIC_MODEL env var when options.model is not set', async () => {
-      process.env['ANTHROPIC_MODEL'] = 'claude-sonnet-4-6'
+      process.env['ANTHROPIC_MODEL'] = 'claude-opus-4-6'
       mockCreate.mockResolvedValue(
         makeClaudeResponse({ files: { 'agent.py': '# x' }, installCommands: [], envVars: [] }),
       )
       await generateWithClaude(baseManifest, { framework: 'langgraph' })
-      const call = mockCreate.mock.calls[0]![0]
-      expect(call.model).toBe('claude-sonnet-4-6')
+      const call = mockCreate.mock.calls[0][0]
+      expect(call.model).toBe('claude-opus-4-6')
     })
 
     it('options.model takes priority over ANTHROPIC_MODEL env var', async () => {
-      process.env['ANTHROPIC_MODEL'] = 'claude-sonnet-4-6'
+      process.env['ANTHROPIC_MODEL'] = 'claude-opus-4-6'
       mockCreate.mockResolvedValue(
         makeClaudeResponse({ files: { 'agent.py': '# x' }, installCommands: [], envVars: [] }),
       )
       await generateWithClaude(baseManifest, { framework: 'langgraph', model: 'claude-haiku-4-5-20251001' })
-      const call = mockCreate.mock.calls[0]![0]
+      const call = mockCreate.mock.calls[0][0]
       expect(call.model).toBe('claude-haiku-4-5-20251001')
     })
 
@@ -373,7 +373,7 @@ describe('generateWithClaude()', () => {
         makeClaudeResponse({ files: { 'agent.py': '# x' }, installCommands: [], envVars: [] }),
       )
       await generateWithClaude(baseManifest, { framework: 'langgraph' })
-      const call = mockCreate.mock.calls[0]![0]
+      const call = mockCreate.mock.calls[0][0]
       expect(call.model).toBe('claude-opus-4-6')
     })
   })

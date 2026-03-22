@@ -108,9 +108,14 @@ async function handleLLMGeneration(
       framework,
       manifestDir,
       auth,
-      onProgress: ({ outputChars }) => {
+      onProgress: ({ outputChars, elapsedSec, stderrTail }) => {
         const kb = (outputChars / 1024).toFixed(1)
-        spin.message(`Generating with ${authLabel} · ${kb}k chars`)
+        const elapsed = elapsedSec !== undefined ? ` · ${elapsedSec}s` : ''
+        const chars = outputChars > 0 ? ` · ${kb}k chars` : ''
+        // Show live stderr tail when there's no output yet — reveals quota errors,
+        // auth prompts, or any other CLI status messages before they cause a timeout.
+        const tail = outputChars === 0 && stderrTail ? ` · ${stderrTail.split('\n').at(-1)?.slice(0, 60)}` : ''
+        spin.message(`Generating with ${authLabel}${elapsed}${chars}${tail}`)
       },
     })
   } catch (err) {
@@ -235,6 +240,12 @@ export function registerGenerateCommand(program: Command): void {
         // ── LLM-driven generation (framework code or helm chart) ─────────────
         printHeader(`AgentSpec Generate — ${opts.framework}`)
 
+        // Start spinner immediately — resolveAuth() runs two blocking subprocesses
+        // (claude --version + claude auth status) which would otherwise leave the
+        // terminal frozen with no feedback before the spinner appears.
+        const spin = spinner()
+        spin.start('Checking auth…')
+
         // Resolve auth once — pass it into generateWithClaude to avoid a second
         // subprocess invocation inside the adapter (PERF-01).
         let auth: AuthResolution | undefined
@@ -244,11 +255,11 @@ export function registerGenerateCommand(program: Command): void {
           const displayModel = process.env['ANTHROPIC_MODEL'] ?? 'claude-opus-4-6'
           authLabel = auth.mode === 'cli' ? 'Claude (subscription)' : `${displayModel} (API)`
         } catch (err) {
+          spin.stop('Auth failed')
           printError(`Claude auth failed: ${String(err)}`)
           process.exit(1)
         }
-        const spin = spinner()
-        spin.start(`Generating with ${authLabel!}`)
+        spin.message(`Generating with ${authLabel}`)
 
         const manifestDir = dirname(resolve(file))
         const generated = await handleLLMGeneration(

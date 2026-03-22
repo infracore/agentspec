@@ -129,6 +129,15 @@ const REPAIR_SYSTEM_PROMPT =
 export interface GenerationProgress {
   /** Cumulative output characters received so far during streaming. */
   outputChars: number
+  /** Seconds elapsed since generation started. Available in CLI mode; undefined in API mode. */
+  elapsedSec?: number
+  /** Latest text chunk received (CLI streaming mode). */
+  latestChunk?: string
+  /**
+   * Last line of stderr from the claude CLI process (CLI mode only).
+   * Shows quota errors, auth prompts, or status messages before they cause a timeout.
+   */
+  stderrTail?: string
 }
 
 export interface ClaudeAdapterOptions {
@@ -185,16 +194,13 @@ export async function generateWithClaude(
   let text: string
 
   if (auth.mode === 'cli') {
-    // CLI mode — subscription path, no streaming
-    text = runClaudeCli({
+    // CLI mode — subscription path. onProgress fires on each stdout chunk + every 5s ticker.
+    text = await runClaudeCli({
       systemPrompt: skillMd,
       userMessage: context,
       model,
+      onProgress: options.onProgress,
     })
-    if (options.onProgress) {
-      // Fire one final progress event with total output length
-      options.onProgress({ outputChars: text.length })
-    }
   } else {
     // API mode — SDK path with optional streaming
     text = await generateWithApi({
@@ -244,7 +250,7 @@ export async function repairYaml(
   let text: string
 
   if (auth.mode === 'cli') {
-    text = runClaudeCli({
+    text = await runClaudeCli({
       systemPrompt: REPAIR_SYSTEM_PROMPT,
       userMessage,
       model,

@@ -291,6 +291,9 @@ export function registerScanCommand(program: Command): void {
     .option('--update', 'Overwrite existing agent.yaml in place')
     .option('--dry-run', 'Print generated YAML to stdout without writing')
     .action(async (opts: { dir: string; out?: string; update?: boolean; dryRun?: boolean }) => {
+      const s = spinner()
+      s.start('Checking auth…')
+
       // Resolve auth once and pass into generateWithClaude to avoid a redundant
       // subprocess call inside the adapter (PERF-01).
       let auth: AuthResolution | undefined
@@ -299,6 +302,7 @@ export function registerScanCommand(program: Command): void {
         auth = resolveAuth()
         authLabel = auth.mode === 'cli' ? 'Claude (subscription)' : 'Claude (API)'
       } catch (err) {
+        s.stop('Auth failed')
         console.error(`Claude auth failed: ${(err as Error).message}`)
         process.exit(1)
       }
@@ -306,8 +310,7 @@ export function registerScanCommand(program: Command): void {
       const srcDir = resolve(opts.dir)
       const sourceFiles = collectAndValidateSourceFiles(srcDir)
 
-      const s = spinner()
-      s.start(`Analysing source code with ${authLabel!}…`)
+      s.message(`Analysing source code with ${authLabel}…`)
 
       // Phase 1: detect (Claude) — returns raw facts as detection.json
       let rawResult: unknown
