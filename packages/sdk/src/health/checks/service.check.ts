@@ -8,8 +8,9 @@
  * the check returns 'skip' rather than 'fail' (the env check will surface the
  * underlying problem).
  *
- * Security: link-local (169.254.x.x) and loopback (127.x.x.x, ::1) addresses
- * are always rejected to prevent unintentional SSRF in container deployments.
+ * Security: link-local (169.254.x.x), loopback (127.x.x.x, ::1), and RFC 1918 private
+ * address ranges (10.x, 172.16-31.x, 192.168.x) are always rejected to prevent
+ * unintentional SSRF in container deployments.
  */
 
 import type { HealthCheck } from '../index.js'
@@ -122,6 +123,7 @@ function parseConnectionUrl(connection: string): { host: string; port: number } 
  * Rejects:
  *  - IPv4 loopback (127.0.0.0/8)
  *  - IPv4 link-local (169.254.0.0/16) — AWS/GCP instance metadata
+ *  - IPv4 private ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16)
  *  - IPv6 loopback (::1)
  *  - IPv6 link-local (fe80::/10)
  *  - Unspecified address (0.0.0.0)
@@ -135,6 +137,16 @@ function classifyHost(host: string): string | null {
   if (h.startsWith('127.')) return 'IPv4 loopback (127.x.x.x) is not probed from service checks'
   if (h.startsWith('169.254.')) return 'link-local address (169.254.x.x) blocked to prevent instance-metadata SSRF'
   if (h.startsWith('fe80:')) return 'IPv6 link-local (fe80::/10) blocked to prevent SSRF'
+
+  // RFC 1918 private ranges — block to prevent internal network probing from manifests
+  if (h.startsWith('10.')) return 'RFC 1918 private address (10.0.0.0/8) blocked to prevent internal SSRF'
+  if (h.startsWith('192.168.')) return 'RFC 1918 private address (192.168.0.0/16) blocked to prevent internal SSRF'
+  if (h.startsWith('172.')) {
+    const second = parseInt(h.split('.')[1] ?? '0', 10)
+    if (second >= 16 && second <= 31) {
+      return 'RFC 1918 private address (172.16.0.0/12) blocked to prevent internal SSRF'
+    }
+  }
 
   return null
 }

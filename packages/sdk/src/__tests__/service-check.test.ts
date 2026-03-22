@@ -304,16 +304,59 @@ describe('runServiceChecks — IPv6 address filtering', () => {
   })
 })
 
+describe('runServiceChecks — RFC 1918 private address SSRF protection (SEC-08)', () => {
+  it('skips 10.0.0.0/8 range', async () => {
+    const checks = await runServiceChecks([{ type: 'redis', connection: 'redis://10.10.10.10:6379' }])
+    expect(checks[0].status).toBe('skip')
+    expect(checks[0].message).toContain('RFC 1918')
+  })
+
+  it('skips 192.168.0.0/16 range', async () => {
+    const checks = await runServiceChecks([{ type: 'redis', connection: 'redis://192.168.1.100:6379' }])
+    expect(checks[0].status).toBe('skip')
+    expect(checks[0].message).toContain('RFC 1918')
+  })
+
+  it('skips 172.16.0.0/12 range (172.16.x.x)', async () => {
+    const checks = await runServiceChecks([{ type: 'redis', connection: 'redis://172.16.0.1:6379' }])
+    expect(checks[0].status).toBe('skip')
+    expect(checks[0].message).toContain('RFC 1918')
+  })
+
+  it('skips 172.31.x.x (edge of 172.16.0.0/12)', async () => {
+    const checks = await runServiceChecks([{ type: 'redis', connection: 'redis://172.31.255.255:6379' }])
+    expect(checks[0].status).toBe('skip')
+    expect(checks[0].message).toContain('RFC 1918')
+  })
+
+  it('does NOT skip 172.32.x.x (outside 172.16.0.0/12)', async () => {
+    // 172.32.x.x is NOT in the RFC 1918 range — should be attempted
+    const checks = await runServiceChecks([{ type: 'redis', connection: 'redis://172.32.0.1:6379' }])
+    // Status will be pass or fail (TCP attempt), not skip due to RFC 1918
+    expect(checks[0].message ?? '').not.toContain('RFC 1918')
+  })
+})
+
 describe('runServiceChecks — host:port format without scheme', () => {
   beforeEach(() => {
     mockCreateConnection.mockReset()
     setupConnectError('ECONNREFUSED')
   })
 
-  it('parses IP:port format (no scheme) and attempts TCP', async () => {
-    // "10.0.1.5:6379" — starts with a digit so new URL() throws; fallback host:port parsing runs
+  it('skips RFC 1918 addresses in host:port format (SEC-08)', async () => {
+    // 10.0.1.5 is RFC 1918 — must be blocked to prevent internal network SSRF
     const checks = await runServiceChecks([
       { type: 'redis', connection: '10.0.1.5:6379' },
+    ])
+    expect(checks).toHaveLength(1)
+    expect(checks[0].status).toBe('skip')
+    expect(checks[0].message).toContain('RFC 1918')
+  })
+
+  it('parses a public IP:port format (no scheme) and attempts TCP', async () => {
+    // A public IP (not RFC 1918) should still be attempted for TCP
+    const checks = await runServiceChecks([
+      { type: 'redis', connection: '203.0.113.5:6379' },
     ])
     expect(checks).toHaveLength(1)
     // Should attempt TCP (pass or fail), not skip with "unrecognised format"
