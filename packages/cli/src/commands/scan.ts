@@ -27,10 +27,10 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { extname, join, resolve } from 'node:path'
-import { Command } from 'commander'
+import type { Command } from 'commander'
 import * as jsYaml from 'js-yaml'
 import { spinner } from '../utils/spinner.js'
-import { generateWithClaude, repairYaml, isCliAvailable } from '@agentspec/adapter-claude'
+import { generateWithClaude, repairYaml, resolveAuth, type AuthResolution } from '@agentspec/adapter-claude'
 import { ManifestSchema } from '@agentspec/sdk'
 import { buildManifestFromDetection, type ScanDetection } from './scan-builder.js'
 
@@ -76,12 +76,31 @@ const SKIP_DIRS = new Set([
  * Caps:
  *  - At most `maxFiles` files (default 50).
  *  - At most `maxBytes` total content (default 200 KB); last file is truncated if needed.
+ *
+ * Returns both the capped file list and `totalFound` — the uncapped count — so callers
+ * can warn about truncation without a second directory walk (PERF-02).
  */
 export function collectSourceFiles(
   srcDir: string,
   maxFiles = MAX_FILES,
   maxBytes = MAX_BYTES,
 ): SourceFile[] {
+  const { files } = collectSourceFilesWithCount(srcDir, maxFiles, maxBytes)
+  return files
+}
+
+/** Internal result type returned by collectSourceFilesWithCount. */
+interface CollectResult {
+  files: SourceFile[]
+  /** Total matching files found before the maxFiles cap was applied. */
+  totalFound: number
+}
+
+function collectSourceFilesWithCount(
+  srcDir: string,
+  maxFiles = MAX_FILES,
+  maxBytes = MAX_BYTES,
+): CollectResult {
   // Use realpathSync so that on systems where /tmp → /private/tmp (macOS),
   // the base and all file paths share the same canonical prefix.
   let resolvedBase: string
@@ -92,11 +111,9 @@ export function collectSourceFiles(
   }
   const results: SourceFile[] = []
   let totalBytes = 0
+  let totalFound = 0
 
   function walk(dir: string): void {
-    if (results.length >= maxFiles) return
-    if (totalBytes >= maxBytes) return
-
     let entries: string[]
     try {
       entries = readdirSync(dir).sort()
@@ -105,9 +122,6 @@ export function collectSourceFiles(
     }
 
     for (const entry of entries) {
-      if (results.length >= maxFiles) break
-      if (totalBytes >= maxBytes) break
-
       // Skip hidden dirs and known non-user dirs
       if (entry.startsWith('.') || SKIP_DIRS.has(entry)) continue
 
@@ -144,6 +158,12 @@ export function collectSourceFiles(
         }
         if (!realPath.startsWith(resolvedBase + '/') && realPath !== resolvedBase) continue
 
+        totalFound++
+
+        // Apply caps only to what we include in the result
+        if (results.length >= maxFiles) continue
+        if (totalBytes >= maxBytes) continue
+
         let content: string
         try {
           content = readFileSync(fullPath, 'utf-8')
@@ -161,7 +181,7 @@ export function collectSourceFiles(
   }
 
   walk(resolvedBase)
-  return results
+  return { files: results, totalFound }
 }
 
 // ── resolveOutputPath ─────────────────────────────────────────────────────────
@@ -189,16 +209,16 @@ export function resolveOutputPath(opts: ScanOptions): string {
 
 /**
  * Collect source files and emit cap warnings. Returns the files ready for scanning.
+ * Uses a single directory walk for both the files and the total count (PERF-02).
  */
 function collectAndValidateSourceFiles(srcDir: string): SourceFile[] {
-  const files = collectSourceFiles(srcDir)
+  const { files, totalFound } = collectSourceFilesWithCount(srcDir)
   if (files.length === 0) {
     console.warn(`No source files found in ${srcDir}`)
   }
-  const rawCount = countSourceFiles(srcDir)
-  if (rawCount > MAX_FILES) {
+  if (totalFound > MAX_FILES) {
     console.warn(
-      `Found ${rawCount} source files — truncating to ${MAX_FILES} files cap. ` +
+      `Found ${totalFound} source files — truncating to ${MAX_FILES} files cap. ` +
       `Use a narrower --dir path to scan specific modules.`,
     )
   }
@@ -271,14 +291,23 @@ export function registerScanCommand(program: Command): void {
     .option('--update', 'Overwrite existing agent.yaml in place')
     .option('--dry-run', 'Print generated YAML to stdout without writing')
     .action(async (opts: { dir: string; out?: string; update?: boolean; dryRun?: boolean }) => {
-      const usingCli = isCliAvailable()
-      const authLabel = usingCli ? 'Claude (subscription)' : 'Claude (API)'
+      // Resolve auth once and pass into generateWithClaude to avoid a redundant
+      // subprocess call inside the adapter (PERF-01).
+      let auth: AuthResolution | undefined
+      let authLabel: string
+      try {
+        auth = resolveAuth()
+        authLabel = auth.mode === 'cli' ? 'Claude (subscription)' : 'Claude (API)'
+      } catch (err) {
+        console.error(`Claude auth failed: ${(err as Error).message}`)
+        process.exit(1)
+      }
 
       const srcDir = resolve(opts.dir)
       const sourceFiles = collectAndValidateSourceFiles(srcDir)
 
       const s = spinner()
-      s.start(`Analysing source code with ${authLabel}…`)
+      s.start(`Analysing source code with ${authLabel!}…`)
 
       // Phase 1: detect (Claude) — returns raw facts as detection.json
       let rawResult: unknown
@@ -290,6 +319,7 @@ export function registerScanCommand(program: Command): void {
             framework: 'scan',
             contextFiles: sourceFiles.map(f => f.path),
             manifestDir: srcDir,
+            auth: auth!,
           },
         )
       } catch (err) {
@@ -358,61 +388,4 @@ export function registerScanCommand(program: Command): void {
       writeFileSync(outPath, agentYaml, 'utf-8')
       console.log(`✓ Written: ${outPath}`)
     })
-}
-
-// ── Internal helpers ──────────────────────────────────────────────────────────
-
-/**
- * Count source files without reading content (for cap warning).
- *
- * [C2] Applies the same security guards as collectSourceFiles:
- *   - Symlinks skipped via lstatSync
- *   - Path kept within resolvedBase
- *   - SKIP_DIRS excluded
- */
-function countSourceFiles(srcDir: string): number {
-  let resolvedBase: string
-  try {
-    resolvedBase = realpathSync(resolve(srcDir))
-  } catch {
-    resolvedBase = resolve(srcDir)
-  }
-  let count = 0
-
-  function walk(dir: string): void {
-    let entries: string[]
-    try {
-      entries = readdirSync(dir)
-    } catch {
-      return
-    }
-    for (const entry of entries) {
-      if (entry.startsWith('.') || SKIP_DIRS.has(entry)) continue
-
-      const fullPath = join(dir, entry)
-      let stat: ReturnType<typeof lstatSync>
-      try {
-        stat = lstatSync(fullPath) // [C2] lstatSync — no symlink following
-      } catch {
-        continue
-      }
-      if (stat.isSymbolicLink()) continue
-
-      if (stat.isDirectory()) {
-        let resolvedDir: string
-        try {
-          resolvedDir = realpathSync(fullPath)
-        } catch {
-          continue
-        }
-        if (!resolvedDir.startsWith(resolvedBase + '/') && resolvedDir !== resolvedBase) continue
-        walk(fullPath)
-      } else if (stat.isFile() && SOURCE_EXTENSIONS.has(extname(entry))) {
-        count++
-      }
-    }
-  }
-
-  walk(resolvedBase)
-  return count
 }

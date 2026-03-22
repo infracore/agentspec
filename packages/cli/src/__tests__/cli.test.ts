@@ -105,7 +105,7 @@ describe('agentspec generate', () => {
   it('exits 1 when ANTHROPIC_API_KEY is missing for langgraph', async () => {
     const result = await runCli(
       ['generate', exampleManifest, '--framework', 'langgraph'],
-      { ANTHROPIC_API_KEY: '' },
+      { ANTHROPIC_API_KEY: '', AGENTSPEC_CLAUDE_AUTH_MODE: 'api' },
     )
     expect(result.exitCode).toBe(1)
   })
@@ -113,7 +113,7 @@ describe('agentspec generate', () => {
   it('stderr contains auth guidance when key is missing', async () => {
     const result = await runCli(
       ['generate', exampleManifest, '--framework', 'langgraph'],
-      { ANTHROPIC_API_KEY: '' },
+      { ANTHROPIC_API_KEY: '', AGENTSPEC_CLAUDE_AUTH_MODE: 'api' },
     )
     const combined = result.stdout + result.stderr
     // When neither CLI auth nor API key works, the error mentions both options.
@@ -125,7 +125,7 @@ describe('agentspec generate', () => {
   it('exits 1 with --dry-run when ANTHROPIC_API_KEY is missing', async () => {
     const result = await runCli(
       ['generate', exampleManifest, '--framework', 'langgraph', '--dry-run'],
-      { ANTHROPIC_API_KEY: '' },
+      { ANTHROPIC_API_KEY: '', AGENTSPEC_CLAUDE_AUTH_MODE: 'api' },
     )
     expect(result.exitCode).toBe(1)
   })

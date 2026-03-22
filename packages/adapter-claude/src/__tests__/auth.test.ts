@@ -30,6 +30,13 @@ function makeAuthNotLoggedIn(): void {
   mockExecFileSync.mockImplementationOnce(() => { throw err })
 }
 
+/** Returns JSON with loggedIn: false (tests that we parse before lowercasing). */
+function makeAuthJsonLoggedInFalse(): void {
+  mockExecFileSync.mockImplementationOnce(() =>
+    JSON.stringify({ loggedIn: false }),
+  )
+}
+
 function makeCliNotFound(): void {
   const err = Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
   mockExecFileSync.mockImplementationOnce(() => { throw err })
@@ -216,5 +223,111 @@ describe('isCliAvailable()', () => {
     makeAuthNotLoggedIn()
     const { isCliAvailable } = await import('../auth.js')
     expect(isCliAvailable()).toBe(false)
+  })
+
+  it('returns false when auth status JSON has loggedIn: false (not misread after lowercase)', async () => {
+    // Before the fix, .toLowerCase() on the raw output turned "loggedIn" into "loggedin",
+    // so JSON.parse on the lowercased string would miss the key and fall through to returning true.
+    makeVersionOk()
+    makeAuthJsonLoggedInFalse()
+    const { isCliAvailable } = await import('../auth.js')
+    expect(isCliAvailable()).toBe(false)
+  })
+})
+
+// ── probeClaudeAuth() tests ───────────────────────────────────────────────────
+
+describe('probeClaudeAuth()', () => {
+  const savedKey = process.env['ANTHROPIC_API_KEY']
+  const savedMode = process.env['AGENTSPEC_CLAUDE_AUTH_MODE']
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    delete process.env['ANTHROPIC_API_KEY']
+    delete process.env['AGENTSPEC_CLAUDE_AUTH_MODE']
+  })
+
+  afterEach(() => {
+    if (savedKey !== undefined) process.env['ANTHROPIC_API_KEY'] = savedKey
+    else delete process.env['ANTHROPIC_API_KEY']
+    if (savedMode !== undefined) process.env['AGENTSPEC_CLAUDE_AUTH_MODE'] = savedMode
+    else delete process.env['AGENTSPEC_CLAUDE_AUTH_MODE']
+  })
+
+  it('returns a report with cli, api, and env sections', async () => {
+    const err = Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
+    mockExecFileSync.mockImplementation(() => { throw err })
+    const { probeClaudeAuth } = await import('../auth.js')
+    const report = await probeClaudeAuth()
+    expect(report).toHaveProperty('cli')
+    expect(report).toHaveProperty('api')
+    expect(report).toHaveProperty('env')
+  })
+
+  it('reports cli.installed=false when binary is not on PATH', async () => {
+    const err = Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
+    mockExecFileSync.mockImplementation(() => { throw err })
+    const { probeClaudeAuth } = await import('../auth.js')
+    const report = await probeClaudeAuth()
+    expect(report.cli.installed).toBe(false)
+    expect(report.cli.authenticated).toBe(false)
+    expect(report.cli.version).toBeNull()
+  })
+
+  it('reports cli.installed=true and cli.authenticated=true when CLI is ready', async () => {
+    mockExecFileSync
+      .mockImplementationOnce(() => 'claude 2.1.81')  // --version
+      .mockImplementationOnce(() => JSON.stringify({ loggedIn: true })) // auth status (probeVersion)
+      .mockImplementationOnce(() => 'claude 2.1.81')  // --version again (isClaudeOnPath via isClaudeAuthenticated path)
+      .mockImplementationOnce(() => JSON.stringify({ loggedIn: true })) // auth status (isClaudeAuthenticated)
+      .mockImplementationOnce(() => 'claude 2.1.81')  // resolveAuth -> isClaudeOnPath
+      .mockImplementationOnce(() => JSON.stringify({ loggedIn: true })) // resolveAuth -> isClaudeAuthenticated
+    const { probeClaudeAuth } = await import('../auth.js')
+    const report = await probeClaudeAuth()
+    expect(report.cli.installed).toBe(true)
+    expect(report.cli.authenticated).toBe(true)
+  })
+
+  it('env.resolvedMode is "none" when neither CLI nor API key is available', async () => {
+    // Mock ALL execFileSync calls to throw ENOENT (CLI not on PATH)
+    const err = Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
+    mockExecFileSync.mockImplementation(() => { throw err })
+    const { probeClaudeAuth } = await import('../auth.js')
+    const report = await probeClaudeAuth()
+    expect(report.env.resolvedMode).toBe('none')
+    expect(report.env.resolveError).toBeTruthy()
+  })
+
+  it('env.resolvedMode is "api" when only ANTHROPIC_API_KEY is set', async () => {
+    // Mock ALL execFileSync calls to throw ENOENT
+    const err = Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
+    mockExecFileSync.mockImplementation(() => { throw err })
+    process.env['ANTHROPIC_API_KEY'] = 'sk-ant-test'
+    const { probeClaudeAuth } = await import('../auth.js')
+    const report = await probeClaudeAuth()
+    expect(report.env.resolvedMode).toBe('api')
+    expect(report.api.keySet).toBe(true)
+  })
+
+  it('api.keyPreview masks most of the key (first 4 + last 2)', async () => {
+    const err = Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
+    mockExecFileSync.mockImplementation(() => { throw err })
+    process.env['ANTHROPIC_API_KEY'] = 'sk-ant-test-long-key-12345'
+    const { probeClaudeAuth } = await import('../auth.js')
+    const report = await probeClaudeAuth()
+    // Verify the preview does NOT contain the full key
+    expect(report.api.keyPreview).not.toBe('sk-ant-test-long-key-12345')
+    // But does start with the first 4 chars
+    expect(report.api.keyPreview).toMatch(/^sk-a/)
+  })
+
+  it('never throws — captures errors into the report', async () => {
+    // Even if everything throws, probeClaudeAuth should return gracefully
+    mockExecFileSync.mockImplementation(() => { throw new Error('catastrophic failure') })
+    const { probeClaudeAuth } = await import('../auth.js')
+    await expect(probeClaudeAuth()).resolves.toMatchObject({
+      cli: expect.objectContaining({ installed: false }),
+      env: expect.objectContaining({ resolvedMode: 'none' }),
+    })
   })
 })

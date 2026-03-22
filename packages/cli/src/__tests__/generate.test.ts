@@ -37,7 +37,7 @@ vi.mock('../deploy/k8s.js', () => ({
 
 vi.mock('@agentspec/adapter-claude', () => ({
   listFrameworks: vi.fn(() => ['langgraph', 'crewai', 'mastra']),
-  isCliAvailable: vi.fn(() => false),
+  resolveAuth: vi.fn(() => ({ mode: 'api', apiKey: 'sk-ant-test' })),
   generateWithClaude: vi.fn().mockResolvedValue({
     files: {
       'agent.py': '# agent',

@@ -85,15 +85,11 @@ describe('buildContext()', () => {
     buildContext = mod.buildContext
   })
 
-  it('includes manifest as JSON code block', () => {
+  it('wraps manifest in <context_manifest> XML tags (prompt-injection boundary)', () => {
     const ctx = buildContext({ manifest: baseManifest })
-    expect(ctx).toContain('```json')
+    expect(ctx).toContain('<context_manifest>')
+    expect(ctx).toContain('</context_manifest>')
     expect(ctx).toContain('"name": "test-agent"')
-  })
-
-  it('includes the manifest section header', () => {
-    const ctx = buildContext({ manifest: baseManifest })
-    expect(ctx).toContain('## Agent Manifest')
   })
 
   it('serialises all manifest fields', () => {
@@ -108,9 +104,25 @@ describe('buildContext()', () => {
     ).not.toThrow()
   })
 
-  it('does not include a context file section when files list is empty', () => {
+  it('does not include a context_file tag when files list is empty', () => {
     const ctx = buildContext({ manifest: baseManifest, contextFiles: [] })
-    expect(ctx).not.toContain('## Context File:')
+    expect(ctx).not.toContain('<context_file')
+  })
+
+  it('wraps context files in <context_file> XML tags (prompt-injection boundary)', () => {
+    const dir = join(tmpdir(), `agentspec-test-${Date.now()}`)
+    mkdirSync(dir, { recursive: true })
+    const toolFile = join(dir, 'tool_implementations.py')
+    writeFileSync(toolFile, 'def log_workout(exercises: list[str]) -> str: ...', 'utf-8')
+
+    try {
+      const ctx = buildContext({ manifest: baseManifest, contextFiles: [toolFile] })
+      expect(ctx).toContain('<context_file')
+      expect(ctx).toContain('</context_file>')
+      expect(ctx).toContain('log_workout')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 
   it('auto-resolves $file: module refs when manifestDir is provided', () => {
@@ -135,7 +147,7 @@ describe('buildContext()', () => {
 
     try {
       const ctx = buildContext({ manifest: manifestWithFileTool, manifestDir: dir })
-      expect(ctx).toContain('## Context File:')
+      expect(ctx).toContain('<context_file')
       expect(ctx).toContain('log_workout')
     } finally {
       rmSync(dir, { recursive: true, force: true })
@@ -157,7 +169,34 @@ describe('buildContext()', () => {
       },
     }
     const ctx = buildContext({ manifest: manifestWithFileTool })
-    expect(ctx).not.toContain('## Context File:')
+    expect(ctx).not.toContain('<context_file')
+  })
+
+  it('silently skips $file: refs that traverse outside the manifest directory (SEC-03)', () => {
+    const dir = join(tmpdir(), `agentspec-test-${Date.now()}`)
+    mkdirSync(dir, { recursive: true })
+
+    const manifestWithTraversal: AgentSpecManifest = {
+      ...baseManifest,
+      spec: {
+        ...baseManifest.spec,
+        tools: [
+          {
+            name: 'evil-tool',
+            description: 'Traversal attempt',
+            module: '$file:../../etc/passwd',
+          } as unknown as NonNullable<AgentSpecManifest['spec']['tools']>[number],
+        ],
+      },
+    }
+
+    try {
+      const ctx = buildContext({ manifest: manifestWithTraversal, manifestDir: dir })
+      // The traversal path should be silently skipped — no context_file for it
+      expect(ctx).not.toContain('context_file')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
 
@@ -543,5 +582,73 @@ describe('generateWithClaude()', () => {
       expect(counts.length).toBeGreaterThanOrEqual(2)
       expect(counts[counts.length - 1]).toBeGreaterThan(counts[0]!)
     })
+  })
+})
+
+// ── repairYaml() tests ────────────────────────────────────────────────────────
+
+describe('repairYaml()', () => {
+  beforeEach(() => {
+    process.env['ANTHROPIC_API_KEY'] = 'sk-ant-test-key'
+    vi.clearAllMocks()
+  })
+
+  afterEach(() => {
+    delete process.env['ANTHROPIC_API_KEY']
+  })
+
+  it('returns the fixed agent.yaml string from Claude response', async () => {
+    const fixedYaml = 'apiVersion: agentspec.io/v1\nkind: AgentSpec\n'
+    mockCreate.mockResolvedValue(
+      makeClaudeResponse({
+        files: { 'agent.yaml': fixedYaml },
+        installCommands: [],
+        envVars: [],
+      }),
+    )
+    const { repairYaml } = await import('../index.js')
+    const result = await repairYaml('bad: yaml', 'missing required field')
+    expect(result).toBe(fixedYaml)
+  })
+
+  it('throws when Claude does not return agent.yaml in the response', async () => {
+    mockCreate.mockResolvedValue(
+      makeClaudeResponse({
+        files: { 'other.yaml': 'something' },
+        installCommands: [],
+        envVars: [],
+      }),
+    )
+    const { repairYaml } = await import('../index.js')
+    await expect(repairYaml('bad: yaml', 'error')).rejects.toThrow('agent.yaml')
+  })
+
+  it('includes the YAML content in the user message (truncated to 64KB)', async () => {
+    const longYaml = 'x: '.repeat(100_000)   // well over 64KB
+    mockCreate.mockResolvedValue(
+      makeClaudeResponse({
+        files: { 'agent.yaml': 'apiVersion: agentspec.io/v1\n' },
+        installCommands: [],
+        envVars: [],
+      }),
+    )
+    const { repairYaml } = await import('../index.js')
+    await repairYaml(longYaml, 'some error')
+    const callArgs = mockCreate.mock.calls[0]?.[0] as { messages: Array<{ content: string }> }
+    const userMsg = callArgs?.messages[0]?.content ?? ''
+    // The truncated YAML must appear in the message (64KB = 65536 chars)
+    expect(userMsg.length).toBeLessThan(longYaml.length + 500)
+  })
+
+  it('wraps YAML in <yaml_content> tags to prevent prompt injection (SEC-02)', async () => {
+    mockCreate.mockResolvedValue(
+      makeClaudeResponse({ files: { 'agent.yaml': 'apiVersion: agentspec.io/v1\n' }, installCommands: [], envVars: [] }),
+    )
+    const { repairYaml } = await import('../index.js')
+    await repairYaml('evil: content', 'some error')
+    const callArgs = mockCreate.mock.calls[0]?.[0] as { messages: Array<{ content: string }> }
+    const userMsg = callArgs?.messages[0]?.content ?? ''
+    expect(userMsg).toContain('<yaml_content>')
+    expect(userMsg).toContain('</yaml_content>')
   })
 })

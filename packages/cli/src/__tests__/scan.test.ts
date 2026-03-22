@@ -29,7 +29,7 @@ vi.mock('@agentspec/adapter-claude', () => ({
   }),
   repairYaml: vi.fn().mockResolvedValue(''),
   listFrameworks: vi.fn(() => ['langgraph', 'crewai', 'mastra']),
-  isCliAvailable: vi.fn(() => false),
+  resolveAuth: vi.fn(() => ({ mode: 'api', apiKey: 'sk-ant-test' })),
 }))
 
 vi.mock('@agentspec/sdk', async (importOriginal) => {

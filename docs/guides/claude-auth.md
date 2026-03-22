@@ -224,7 +224,7 @@ variables:
 | `No Claude authentication found` | Neither CLI nor API key available | Install Claude CLI and log in, or set `ANTHROPIC_API_KEY` |
 | `AGENTSPEC_CLAUDE_AUTH_MODE=cli but claude is not authenticated` | Forced CLI mode, not logged in | Run `claude auth login` |
 | `AGENTSPEC_CLAUDE_AUTH_MODE=api but ANTHROPIC_API_KEY is not set` | Forced API mode, no key | Set `ANTHROPIC_API_KEY` |
-| `Claude CLI timed out after 120s` | Generation too large for default timeout | Use `--framework` with a smaller manifest, or switch to API mode |
+| `Claude CLI timed out after 300s` | Generation too large for default timeout | Use `--framework` with a smaller manifest, or switch to API mode |
 | `Claude CLI is not authenticated` | CLI installed but session expired | Run `claude auth login` again |
 
 ---

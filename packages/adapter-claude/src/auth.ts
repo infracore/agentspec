@@ -50,12 +50,13 @@ function isClaudeAuthenticated(): boolean {
       windowsHide: true,
       encoding: 'utf-8',
     })
-    const combined = (typeof raw === 'string' ? raw : '').toLowerCase()
+    const rawStr = typeof raw === 'string' ? raw : ''
 
-    // `claude auth status` exits 0 and returns JSON with loggedIn: true when authenticated
-    if (combined.startsWith('{') || combined.startsWith('[')) {
+    // `claude auth status` exits 0 and returns JSON with loggedIn: true when authenticated.
+    // Parse the original string (before any lowercasing) so key names like "loggedIn" are preserved.
+    if (rawStr.trimStart().startsWith('{') || rawStr.trimStart().startsWith('[')) {
       try {
-        const parsed = JSON.parse(combined)
+        const parsed = JSON.parse(rawStr)
         const loggedIn = extractLoggedIn(parsed)
         if (loggedIn !== undefined) return loggedIn
       } catch {
@@ -63,22 +64,16 @@ function isClaudeAuthenticated(): boolean {
       }
     }
 
-    if (combined.includes('not logged in') || combined.includes('login required')) {
+    // Text-based heuristics (only lowercase for these checks)
+    const lower = rawStr.toLowerCase()
+    if (lower.includes('not logged in') || lower.includes('login required')) {
       return false
     }
 
     // If command exited 0 and has no explicit "not logged in" signal, treat as authenticated
     return true
-  } catch (err: unknown) {
-    // Non-zero exit = not authenticated
-    const stderr =
-      err instanceof Error && 'stderr' in err
-        ? String((err as NodeJS.ErrnoException & { stderr?: unknown }).stderr ?? '')
-        : ''
-    const combined = stderr.toLowerCase()
-    if (combined.includes('not logged in') || combined.includes('login required')) {
-      return false
-    }
+  } catch {
+    // Non-zero exit or subprocess failure = not authenticated
     return false
   }
 }
@@ -135,7 +130,7 @@ export interface ClaudeCliProbe {
 export interface ClaudeApiProbe {
   /** Whether ANTHROPIC_API_KEY is set. */
   keySet: boolean
-  /** Masked key showing first 16 chars + '…', or null if not set. */
+  /** Masked key showing first 4 chars + '…' + last 2 chars, or null if not set. */
   keyPreview: string | null
   /** Whether ANTHROPIC_BASE_URL is set. */
   baseURLSet: boolean
@@ -297,7 +292,7 @@ export async function probeClaudeAuth(): Promise<ClaudeProbeReport> {
 
   const apiProbe: ClaudeApiProbe = {
     keySet: !!apiKey,
-    keyPreview: apiKey ? `${apiKey.slice(0, 16)}…` : null,
+    keyPreview: apiKey ? `${apiKey.slice(0, 4)}…${apiKey.slice(-2)}` : null,
     baseURLSet: !!baseURL,
     baseURL,
     keyValid,

@@ -8,17 +8,6 @@ vi.mock('node:child_process', () => ({
   spawnSync: mockSpawnSync,
 }))
 
-// Mock fs temp file helpers so tests don't hit the real filesystem
-vi.mock('node:fs', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('node:fs')>()
-  return {
-    ...actual,
-    writeFileSync: vi.fn(),
-    unlinkSync: vi.fn(),
-    mkdtempSync: vi.fn(() => '/tmp/agentspec-test-abc'),
-  }
-})
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function makeSuccessResult(output: string) {

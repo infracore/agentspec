@@ -4,7 +4,7 @@ import { basename, dirname, join, resolve, sep } from 'node:path'
 import chalk from 'chalk'
 import { spinner } from '../utils/spinner.js'
 import { loadManifest } from '@agentspec/sdk'
-import { generateWithClaude, listFrameworks, isCliAvailable } from '@agentspec/adapter-claude'
+import { generateWithClaude, listFrameworks, resolveAuth, type AuthResolution } from '@agentspec/adapter-claude'
 import { printHeader, printError, printSuccess } from '../utils/output.js'
 import { generateK8sManifests } from '../deploy/k8s.js'
 
@@ -101,11 +101,13 @@ async function handleLLMGeneration(
   manifestDir: string,
   spin: ReturnType<typeof spinner>,
   authLabel: string,
+  auth: AuthResolution,
 ): Promise<Awaited<ReturnType<typeof generateWithClaude>>> {
   try {
     return await generateWithClaude(manifest, {
       framework,
       manifestDir,
+      auth,
       onProgress: ({ outputChars }) => {
         const kb = (outputChars / 1024).toFixed(1)
         spin.message(`Generating with ${authLabel} · ${kb}k chars`)
@@ -179,7 +181,13 @@ async function runDeployTarget(
   if (target === 'helm') {
     console.log()
     console.log(chalk.bold('  Helm chart (Claude-generated):'))
-    const helmGenerated = await generateWithClaude(manifest, { framework: 'helm' })
+    let helmGenerated: Awaited<ReturnType<typeof generateWithClaude>>
+    try {
+      helmGenerated = await generateWithClaude(manifest, { framework: 'helm' })
+    } catch (err) {
+      printError(`Helm generation failed: ${String(err)}`)
+      process.exit(1)
+    }
     writeGeneratedFiles(helmGenerated.files, outDir)
   }
 }
@@ -227,11 +235,20 @@ export function registerGenerateCommand(program: Command): void {
         // ── LLM-driven generation (framework code or helm chart) ─────────────
         printHeader(`AgentSpec Generate — ${opts.framework}`)
 
-        const usingCli = isCliAvailable()
-        const displayModel = process.env['ANTHROPIC_MODEL'] ?? 'claude-opus-4-6'
-        const authLabel = usingCli ? 'Claude (subscription)' : `${displayModel} (API)`
+        // Resolve auth once — pass it into generateWithClaude to avoid a second
+        // subprocess invocation inside the adapter (PERF-01).
+        let auth: AuthResolution | undefined
+        let authLabel: string
+        try {
+          auth = resolveAuth()
+          const displayModel = process.env['ANTHROPIC_MODEL'] ?? 'claude-opus-4-6'
+          authLabel = auth.mode === 'cli' ? 'Claude (subscription)' : `${displayModel} (API)`
+        } catch (err) {
+          printError(`Claude auth failed: ${String(err)}`)
+          process.exit(1)
+        }
         const spin = spinner()
-        spin.start(`Generating with ${authLabel}`)
+        spin.start(`Generating with ${authLabel!}`)
 
         const manifestDir = dirname(resolve(file))
         const generated = await handleLLMGeneration(
@@ -239,7 +256,8 @@ export function registerGenerateCommand(program: Command): void {
           opts.framework,
           manifestDir,
           spin,
-          authLabel,
+          authLabel!,
+          auth!,
         )
 
         const totalKb = (
