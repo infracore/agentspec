@@ -120,26 +120,34 @@ Options:
 - `--deploy <target>` — also generate deployment manifests: `k8s` | `helm`
 - `--push` — write `.env.agentspec` with push mode env var placeholders (`AGENTSPEC_URL`, `AGENTSPEC_KEY`)
 
-**Requires `ANTHROPIC_API_KEY`** — generation uses Claude to reason over every manifest field
-and produce complete, production-ready code. Get a key at [console.anthropic.com](https://console.anthropic.com).
+**Requires Claude auth** — generation uses Claude to reason over every manifest field
+and produce complete, production-ready code. Two methods are supported (CLI first):
 
 ```bash
-export ANTHROPIC_API_KEY=your-api-key-here
+# Option A — Claude subscription (Pro / Max), no API key needed
+claude auth login
+agentspec generate agent.yaml --framework langgraph
+
+# Option B — Anthropic API key
+export ANTHROPIC_API_KEY=sk-ant-...
 agentspec generate agent.yaml --framework langgraph
 ```
+
+Check which method is active: `agentspec claude-status`
 
 **Optional env vars:**
 
 | Variable | Default | Description |
 |---|---|---|
+| `AGENTSPEC_CLAUDE_AUTH_MODE` | `auto` | Force `cli` or `api` auth method |
 | `ANTHROPIC_MODEL` | `claude-opus-4-6` | Claude model used for generation |
-| `ANTHROPIC_BASE_URL` | Anthropic API | Custom proxy or private endpoint |
+| `ANTHROPIC_BASE_URL` | Anthropic API | Custom proxy or private endpoint (API mode only) |
 
 ```bash
 # Use a faster/cheaper model
 export ANTHROPIC_MODEL=claude-sonnet-4-6
-# Route through a proxy
-export ANTHROPIC_BASE_URL=https://my-proxy.example.com
+# Force API mode in CI
+export AGENTSPEC_CLAUDE_AUTH_MODE=api
 
 agentspec generate agent.yaml --framework langgraph
 ```
@@ -246,15 +254,72 @@ Options:
 
 Scans `.py`, `.ts`, `.js`, `.mjs`, `.cjs` files only. Excludes `node_modules/`, `.git/`, `dist/`, `.venv/` and other non-user directories. Caps at **50 files** and **200 KB** of source content per scan.
 
-**Requires `ANTHROPIC_API_KEY`.**
+**Requires Claude auth** — uses the same subscription-first resolution as `generate`.
 
 ```bash
-export ANTHROPIC_API_KEY=your-api-key-here
+# Option A — Claude subscription
+claude auth login
 agentspec scan --dir ./src/ --dry-run   # preview before writing
 agentspec scan --dir ./src/             # write agent.yaml
+
+# Option B — API key
+export ANTHROPIC_API_KEY=sk-ant-...
+agentspec scan --dir ./src/
 ```
 
-Exit codes: `0` = manifest written, `1` = API key missing or generation error.
+Check which method is active: `agentspec claude-status`
+
+Exit codes: `0` = manifest written, `1` = auth missing or generation error.
+
+## `agentspec claude-status`
+
+Show full Claude authentication status — which method is active, account details, API key validity, and which method `generate` / `scan` would use right now.
+
+```bash
+agentspec claude-status
+agentspec claude-status --json
+```
+
+Options:
+- `--json` — machine-readable output (useful in CI to inspect auth state)
+
+**Example output:**
+
+```
+  AgentSpec — Claude Status
+  ───────────────────────────
+
+CLI (Claude subscription)
+  ✓ Installed              yes
+    Version                2.1.81 (Claude Code)
+  ✓ Authenticated          yes
+  ✓ Account                you@example.com
+  ✓ Plan                   Claude Pro
+
+API key (Anthropic)
+  ✗ ANTHROPIC_API_KEY      not set
+  – ANTHROPIC_BASE_URL     not set (using default)
+
+Environment & resolution
+  – Auth mode override     not set (auto)
+  – Model override         not set (default: claude-opus-4-6)
+
+  ✓ Would use: Claude subscription (CLI)
+
+──────────────────────────────────────────────────
+✓ Ready — Claude subscription (Claude Pro) · you@example.com
+  agentspec generate and scan will use the claude CLI
+```
+
+**What it checks:**
+
+| Section | What is probed |
+|---------|---------------|
+| CLI | `claude --version`, `claude auth status` — version, login state, account email, plan |
+| API | `ANTHROPIC_API_KEY` presence + live HTTP probe to `/v1/models`, `ANTHROPIC_BASE_URL` |
+| Environment | `AGENTSPEC_CLAUDE_AUTH_MODE`, `ANTHROPIC_MODEL` overrides, final resolved mode |
+
+Exit codes: `0` = at least one auth method is ready, `1` = no auth configured.
 
 ## `agentspec diff`
 

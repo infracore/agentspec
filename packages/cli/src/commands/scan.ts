@@ -30,7 +30,7 @@ import { extname, join, resolve } from 'node:path'
 import { Command } from 'commander'
 import * as jsYaml from 'js-yaml'
 import { spinner } from '../utils/spinner.js'
-import { generateWithClaude, repairYaml } from '@agentspec/adapter-claude'
+import { generateWithClaude, repairYaml, isCliAvailable } from '@agentspec/adapter-claude'
 import { ManifestSchema } from '@agentspec/sdk'
 import { buildManifestFromDetection, type ScanDetection } from './scan-builder.js'
 
@@ -114,7 +114,7 @@ export function collectSourceFiles(
       const fullPath = join(dir, entry)
 
       // [C1] Use lstatSync — does NOT follow symlinks
-      let stat
+      let stat: ReturnType<typeof lstatSync>
       try {
         stat = lstatSync(fullPath)
       } catch {
@@ -271,19 +271,14 @@ export function registerScanCommand(program: Command): void {
     .option('--update', 'Overwrite existing agent.yaml in place')
     .option('--dry-run', 'Print generated YAML to stdout without writing')
     .action(async (opts: { dir: string; out?: string; update?: boolean; dryRun?: boolean }) => {
-      if (!process.env['ANTHROPIC_API_KEY']) {
-        console.error(
-          'ANTHROPIC_API_KEY is not set. agentspec scan uses Claude to analyse source code.\n' +
-          'Get a key at https://console.anthropic.com',
-        )
-        process.exit(1)
-      }
+      const usingCli = isCliAvailable()
+      const authLabel = usingCli ? 'Claude (subscription)' : 'Claude (API)'
 
       const srcDir = resolve(opts.dir)
       const sourceFiles = collectAndValidateSourceFiles(srcDir)
 
       const s = spinner()
-      s.start('Analysing source code…')
+      s.start(`Analysing source code with ${authLabel}…`)
 
       // Phase 1: detect (Claude) — returns raw facts as detection.json
       let rawResult: unknown
@@ -395,7 +390,7 @@ function countSourceFiles(srcDir: string): number {
       if (entry.startsWith('.') || SKIP_DIRS.has(entry)) continue
 
       const fullPath = join(dir, entry)
-      let stat
+      let stat: ReturnType<typeof lstatSync>
       try {
         stat = lstatSync(fullPath) // [C2] lstatSync — no symlink following
       } catch {

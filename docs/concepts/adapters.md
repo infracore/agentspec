@@ -19,9 +19,10 @@ agent.yaml
 ┌─────────────────────────────────┐
 │  @agentspec/adapter-claude      │
 │                                 │
+│  resolveAuth()                  │◄── CLI login or ANTHROPIC_API_KEY
 │  loadSkill('langgraph')         │◄── src/skills/langgraph.md
 │  buildContext(manifest)         │
-│  claude.messages.create(...)    │
+│  claude (subscription or API)   │
 └─────────────────────────────────┘
     │
     ▼
@@ -32,6 +33,17 @@ agentspec generate --output ./generated/
 ```
 
 This approach covers **all manifest fields** without exhaustive TypeScript templates. When the schema evolves, the skill file captures it in plain Markdown, not code.
+
+### Authentication
+
+AgentSpec supports two ways to connect to Claude — no configuration required in most cases:
+
+| Method | How | Priority |
+|--------|-----|----------|
+| **Claude subscription** (Pro / Max) | `claude` CLI + `claude auth login` | First |
+| **Anthropic API key** | `ANTHROPIC_API_KEY` env var | Fallback |
+
+When both are available, subscription is used first. See the [Claude Authentication guide](../guides/claude-auth) for full details, CI setup, and override options.
 
 ### The skill file
 
@@ -75,14 +87,18 @@ export interface GeneratedAgent {
 Generate with any of them:
 
 ```bash
-export ANTHROPIC_API_KEY=your-api-key-here
-# Optional overrides
-# export ANTHROPIC_MODEL=claude-sonnet-4-6          # default: claude-opus-4-6
-# export ANTHROPIC_BASE_URL=https://my-proxy.example.com
-
+# Option A — Claude subscription (no API key needed)
+claude auth login
 agentspec generate agent.yaml --framework langgraph --output ./generated/
-agentspec generate agent.yaml --framework crewai    --output ./generated/
-agentspec generate agent.yaml --framework mastra    --output ./generated/
+
+# Option B — Anthropic API key
+export ANTHROPIC_API_KEY=sk-ant-...
+agentspec generate agent.yaml --framework langgraph --output ./generated/
+
+# Optional overrides (both modes)
+# export ANTHROPIC_MODEL=claude-sonnet-4-6          # default: claude-opus-4-6
+# export AGENTSPEC_CLAUDE_AUTH_MODE=cli             # force subscription
+# export AGENTSPEC_CLAUDE_AUTH_MODE=api             # force API key
 ```
 
 See the per-framework docs for generated file details:
@@ -198,6 +214,7 @@ Every manifest field maps to a concept in generated code. Exact class names vary
 
 ## See also
 
+- [Claude Authentication](../guides/claude-auth) — subscription vs API key, CI setup, overrides
 - [LangGraph adapter](../adapters/langgraph.md) — generated files and manifest mapping
 - [CrewAI adapter](../adapters/crewai.md) — generated files and manifest mapping
 - [Mastra adapter](../adapters/mastra.md) — generated files and manifest mapping

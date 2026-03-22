@@ -26,9 +26,14 @@ The interactive wizard asks for your agent name, model provider, and which featu
 Already have an agent codebase? Generate the manifest from source:
 
 ```bash
-export ANTHROPIC_API_KEY=your-api-key-here
+# Option A — Claude subscription (no API key needed)
+claude auth login
 agentspec scan --dir ./src/ --dry-run   # preview first
 agentspec scan --dir ./src/             # write agent.yaml
+
+# Option B — Anthropic API key
+export ANTHROPIC_API_KEY=sk-ant-...
+agentspec scan --dir ./src/
 ```
 
 Claude reads your `.py` / `.ts` / `.js` files and infers model provider, tools, guardrails,
@@ -129,14 +134,20 @@ A minimal agent will score ~45/100 (grade D). Add guardrails, evaluation, and fa
 ## 7. Generate LangGraph code
 
 Generation uses Claude to reason over your manifest and produce complete, production-ready code.
-Set your Anthropic API key, then run:
+AgentSpec supports two ways to authenticate — no configuration needed if you have a Claude subscription:
 
 ```bash
-export ANTHROPIC_API_KEY=your-api-key-here
+# Option A — Claude subscription (Pro / Max)
+# Install the Claude CLI: https://claude.ai/download
+claude auth login
+agentspec generate agent.yaml --framework langgraph --output ./generated/
+
+# Option B — Anthropic API key
+export ANTHROPIC_API_KEY=sk-ant-...
 agentspec generate agent.yaml --framework langgraph --output ./generated/
 ```
 
-Get an API key at [console.anthropic.com](https://console.anthropic.com).
+When both are available, subscription is used first. See [Claude Authentication](./guides/claude-auth) for CI setup, model overrides, and forcing a specific method.
 
 Generated files:
 ```

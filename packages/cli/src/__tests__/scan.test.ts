@@ -29,6 +29,7 @@ vi.mock('@agentspec/adapter-claude', () => ({
   }),
   repairYaml: vi.fn().mockResolvedValue(''),
   listFrameworks: vi.fn(() => ['langgraph', 'crewai', 'mastra']),
+  isCliAvailable: vi.fn(() => false),
 }))
 
 vi.mock('@agentspec/sdk', async (importOriginal) => {
@@ -300,8 +301,11 @@ describe('scan — CLI integration', () => {
     expect(output).toContain('agentspec')
   })
 
-  it('ANTHROPIC_API_KEY missing → exits 1', async () => {
-    delete process.env['ANTHROPIC_API_KEY']
+  it('generateWithClaude throwing → exits 1', async () => {
+    // Auth errors (no key, no CLI) bubble up from resolveAuth inside generateWithClaude.
+    // This tests that the scan command catches and exits 1 on any generate failure.
+    const { generateWithClaude } = await import('@agentspec/adapter-claude')
+    vi.mocked(generateWithClaude).mockRejectedValueOnce(new Error('No Claude authentication found'))
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((_code?: number): never => {
       throw new Error(`process.exit(${_code})`)
     }) as unknown as typeof process.exit)

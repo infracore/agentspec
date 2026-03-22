@@ -1,11 +1,15 @@
 /**
  * @agentspec/adapter-claude
  *
- * Agentic code generation using Claude API.
- * Claude receives the full manifest JSON + a framework-specific skill file as system prompt and
- * generates production-ready code covering all manifest fields.
+ * Agentic code generation using Claude — supports both:
+ *   - Claude subscription (Pro / Max) via the `claude` CLI (CLI first)
+ *   - Anthropic API key via the SDK
  *
- * Requires: ANTHROPIC_API_KEY environment variable.
+ * Auth resolution order (auto mode, default):
+ *   1. Claude CLI if `claude` is installed and authenticated
+ *   2. ANTHROPIC_API_KEY if set
+ *
+ * Override with: AGENTSPEC_CLAUDE_AUTH_MODE=cli | api
  *
  * Usage:
  *   import { generateWithClaude, listFrameworks } from '@agentspec/adapter-claude'
@@ -19,6 +23,11 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { AgentSpecManifest, GeneratedAgent } from '@agentspec/sdk'
 import { buildContext } from './context-builder.js'
+import { resolveAuth } from './auth.js'
+import { runClaudeCli } from './cli-runner.js'
+
+export { resolveAuth, isCliAvailable, probeClaudeAuth } from './auth.js'
+export type { AuthMode, AuthResolution, ClaudeProbeReport, ClaudeCliProbe, ClaudeApiProbe, ClaudeEnvProbe } from './auth.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const skillsDir = join(__dirname, 'skills')
@@ -55,20 +64,44 @@ function loadSkill(framework: string): string {
   return guidelines + readFileSync(join(skillsDir, `${framework}.md`), 'utf-8')
 }
 
-/**
- * Guard ANTHROPIC_API_KEY and return a configured Anthropic client.
- * Throws with a remediation message if the key is missing.
- */
-function initClaudeClient(): Anthropic {
-  const apiKey = process.env['ANTHROPIC_API_KEY']
-  if (!apiKey) {
-    throw new Error(
-      'ANTHROPIC_API_KEY is not set. AgentSpec generates code using Claude.\n' +
-        'Get a key at https://console.anthropic.com and add it to your environment.',
-    )
-  }
-  const baseURL = process.env['ANTHROPIC_BASE_URL']
+// ── Internal: API-backed generation ──────────────────────────────────────────
+
+function buildApiClient(apiKey: string, baseURL?: string): Anthropic {
   return new Anthropic({ apiKey, ...(baseURL ? { baseURL } : {}) })
+}
+
+async function generateWithApi(input: {
+  readonly systemPrompt: string
+  readonly userMessage: string
+  readonly model: string
+  readonly apiKey: string
+  readonly baseURL?: string
+  readonly onProgress?: (progress: GenerationProgress) => void
+}): Promise<string> {
+  const client = buildApiClient(input.apiKey, input.baseURL)
+  const requestParams = {
+    model: input.model,
+    max_tokens: 32768,
+    system: input.systemPrompt,
+    messages: [{ role: 'user' as const, content: input.userMessage }],
+  }
+
+  if (input.onProgress) {
+    let accumulated = ''
+    for await (const event of client.messages.stream(requestParams)) {
+      if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+        accumulated += event.delta.text
+        input.onProgress({ outputChars: accumulated.length })
+      }
+    }
+    return accumulated
+  }
+
+  const response = await client.messages.create(requestParams)
+  return response.content
+    .filter((block): block is Anthropic.TextBlock => block.type === 'text')
+    .map((block) => block.text)
+    .join('')
 }
 
 /** System prompt used exclusively by repairYaml — knows AgentSpec v1 schema rules. */
@@ -109,26 +142,22 @@ export interface ClaudeAdapterOptions {
   manifestDir?: string
   /**
    * Called on each streamed chunk with cumulative char count.
-   * When provided, generation uses the streaming API so the caller can show
-   * a live progress indicator. Omit to use a single blocking request.
+   * Only supported in API mode. CLI mode ignores this callback but still works.
    */
   onProgress?: (progress: GenerationProgress) => void
 }
 
 /**
- * Generate agent code using Claude API.
+ * Generate agent code using Claude.
  *
- * Throws if ANTHROPIC_API_KEY is not set (with a helpful remediation message).
- * Throws if the framework is not supported.
- * Throws if Claude does not return a parseable JSON response.
+ * Tries Claude CLI first (subscription users), falls back to API key.
+ * Throws with combined remediation if neither is available.
  */
 export async function generateWithClaude(
   manifest: AgentSpecManifest,
   options: ClaudeAdapterOptions,
 ): Promise<GeneratedAgent> {
-  const client = initClaudeClient()
   const skillMd = loadSkill(options.framework)
-
   const context = buildContext({
     manifest,
     contextFiles: options.contextFiles,
@@ -136,32 +165,31 @@ export async function generateWithClaude(
   })
   const model = options.model ?? process.env['ANTHROPIC_MODEL'] ?? 'claude-opus-4-6'
 
-  const requestParams = {
-    model,
-    max_tokens: 32768,
-    system: skillMd,
-    messages: [{ role: 'user' as const, content: context }],
-  }
+  const auth = resolveAuth()
 
   let text: string
 
-  if (options.onProgress) {
-    // Streaming path — yields chunks so the caller can show live progress.
-    let accumulated = ''
-    for await (const event of client.messages.stream(requestParams)) {
-      if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-        accumulated += event.delta.text
-        options.onProgress({ outputChars: accumulated.length })
-      }
+  if (auth.mode === 'cli') {
+    // CLI mode — subscription path, no streaming
+    text = runClaudeCli({
+      systemPrompt: skillMd,
+      userMessage: context,
+      model,
+    })
+    if (options.onProgress) {
+      // Fire one final progress event with total output length
+      options.onProgress({ outputChars: text.length })
     }
-    text = accumulated
   } else {
-    // Blocking path — single request, no progress callbacks.
-    const response = await client.messages.create(requestParams)
-    text = response.content
-      .filter((block): block is Anthropic.TextBlock => block.type === 'text')
-      .map((block) => block.text)
-      .join('')
+    // API mode — SDK path with optional streaming
+    text = await generateWithApi({
+      systemPrompt: skillMd,
+      userMessage: context,
+      model,
+      apiKey: auth.apiKey!,
+      baseURL: auth.baseURL,
+      onProgress: options.onProgress,
+    })
   }
 
   return extractGeneratedAgent(text, options.framework)
@@ -177,17 +205,16 @@ export interface RepairOptions {
 /**
  * Ask Claude to fix an agent.yaml string that failed schema validation.
  *
- * Reuses the scan skill as the system prompt (it carries full schema knowledge).
+ * Reuses the repair system prompt (full schema knowledge).
  * Returns the repaired YAML string, ready to be re-validated by the caller.
  *
- * Throws if ANTHROPIC_API_KEY is not set or Claude does not return a parseable response.
+ * Tries Claude CLI first, falls back to API key.
  */
 export async function repairYaml(
   yamlStr: string,
   validationErrors: string,
   options: RepairOptions = {},
 ): Promise<string> {
-  const client = initClaudeClient()
   const model = options.model ?? process.env['ANTHROPIC_MODEL'] ?? 'claude-opus-4-6'
 
   const userMessage =
@@ -198,17 +225,29 @@ export async function repairYaml(
     `Return ONLY a JSON object (no other text):\n` +
     `\`\`\`json\n{"files":{"agent.yaml":"<corrected YAML>"},"installCommands":[],"envVars":[]}\n\`\`\``
 
-  const response = await client.messages.create({
-    model,
-    max_tokens: 16384,
-    system: REPAIR_SYSTEM_PROMPT,
-    messages: [{ role: 'user' as const, content: userMessage }],
-  })
+  const auth = resolveAuth()
 
-  const text = response.content
-    .filter((block): block is Anthropic.TextBlock => block.type === 'text')
-    .map(block => block.text)
-    .join('')
+  let text: string
+
+  if (auth.mode === 'cli') {
+    text = runClaudeCli({
+      systemPrompt: REPAIR_SYSTEM_PROMPT,
+      userMessage,
+      model,
+    })
+  } else {
+    const client = buildApiClient(auth.apiKey!, auth.baseURL)
+    const response = await client.messages.create({
+      model,
+      max_tokens: 16384,
+      system: REPAIR_SYSTEM_PROMPT,
+      messages: [{ role: 'user' as const, content: userMessage }],
+    })
+    text = response.content
+      .filter((block): block is Anthropic.TextBlock => block.type === 'text')
+      .map((block) => block.text)
+      .join('')
+  }
 
   const result = extractGeneratedAgent(text, 'scan')
   const fixed = result.files['agent.yaml']
@@ -225,14 +264,6 @@ interface ClaudeGenerationResult {
 }
 
 function extractGeneratedAgent(text: string, framework: string): GeneratedAgent {
-  // Build candidates in priority order and return the first one that parses
-  // correctly. Multiple strategies are needed because:
-  //
-  //   1. Claude may return bare JSON (no fence).
-  //   2. Claude may wrap in ```json … ``` but the generated code inside the
-  //      JSON string values can contain backtick sequences that fool a naive
-  //      non-greedy regex — so we use lastIndexOf('\n```') as the close marker.
-  //   3. As a last resort, pull the outermost {...} from the text.
   const candidates: string[] = []
 
   const trimmed = text.trim()

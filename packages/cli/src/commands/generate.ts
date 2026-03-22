@@ -4,7 +4,7 @@ import { basename, dirname, join, resolve, sep } from 'node:path'
 import chalk from 'chalk'
 import { spinner } from '../utils/spinner.js'
 import { loadManifest } from '@agentspec/sdk'
-import { generateWithClaude, listFrameworks } from '@agentspec/adapter-claude'
+import { generateWithClaude, listFrameworks, isCliAvailable } from '@agentspec/adapter-claude'
 import { printHeader, printError, printSuccess } from '../utils/output.js'
 import { generateK8sManifests } from '../deploy/k8s.js'
 
@@ -100,7 +100,7 @@ async function handleLLMGeneration(
   framework: string,
   manifestDir: string,
   spin: ReturnType<typeof spinner>,
-  displayModel: string,
+  authLabel: string,
 ): Promise<Awaited<ReturnType<typeof generateWithClaude>>> {
   try {
     return await generateWithClaude(manifest, {
@@ -108,7 +108,7 @@ async function handleLLMGeneration(
       manifestDir,
       onProgress: ({ outputChars }) => {
         const kb = (outputChars / 1024).toFixed(1)
-        spin.message(`Generating with ${displayModel} · ${kb}k chars`)
+        spin.message(`Generating with ${authLabel} · ${kb}k chars`)
       },
     })
   } catch (err) {
@@ -225,19 +225,13 @@ export function registerGenerateCommand(program: Command): void {
         }
 
         // ── LLM-driven generation (framework code or helm chart) ─────────────
-        if (!process.env['ANTHROPIC_API_KEY']) {
-          printError(
-            'ANTHROPIC_API_KEY is not set. AgentSpec generates code using Claude.\n' +
-              '  Get a key at https://console.anthropic.com and add it to your environment.',
-          )
-          process.exit(1)
-        }
-
         printHeader(`AgentSpec Generate — ${opts.framework}`)
 
+        const usingCli = isCliAvailable()
         const displayModel = process.env['ANTHROPIC_MODEL'] ?? 'claude-opus-4-6'
+        const authLabel = usingCli ? 'Claude (subscription)' : `${displayModel} (API)`
         const spin = spinner()
-        spin.start(`Generating with ${displayModel}`)
+        spin.start(`Generating with ${authLabel}`)
 
         const manifestDir = dirname(resolve(file))
         const generated = await handleLLMGeneration(
@@ -245,7 +239,7 @@ export function registerGenerateCommand(program: Command): void {
           opts.framework,
           manifestDir,
           spin,
-          displayModel,
+          authLabel,
         )
 
         const totalKb = (
