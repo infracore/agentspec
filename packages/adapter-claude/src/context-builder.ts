@@ -1,6 +1,6 @@
 import type { AgentSpecManifest } from '@agentspec/sdk'
 import { readFileSync } from 'node:fs'
-import { join, resolve, sep } from 'node:path'
+import { resolve, sep } from 'node:path'
 
 export interface BuildContextOptions {
   manifest: AgentSpecManifest
