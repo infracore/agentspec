@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import type { AgentSpecManifest } from '@agentspec/sdk'
 import { buildContext } from '../../context-builder.js'
 
 const baseManifest = {
@@ -6,7 +7,7 @@ const baseManifest = {
   kind: 'AgentSpec',
   metadata: { name: 'test-agent', version: '0.1.0', description: 'Test' },
   spec: { model: { provider: 'anthropic', id: 'claude-opus-4-6' } },
-} as any
+} as AgentSpecManifest
 
 describe('buildContext()', () => {
   it('wraps manifest in context_manifest tags', () => {

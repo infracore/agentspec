@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { CodegenError } from '../../provider.js'
+import { CodegenError, type CodegenChunk } from '../../provider.js'
 
 const mockStream = vi.hoisted(() => vi.fn())
 
@@ -45,12 +45,12 @@ describe('CodexProvider', () => {
 
   it('yields done chunk with full accumulated text', async () => {
     mockStream.mockReturnValue(makeOpenAIStream(['hello', ' world']))
-    const chunks = []
+    const chunks: CodegenChunk[] = []
     for await (const c of new CodexProvider('test-key').stream('sys', 'user', {})) {
       chunks.push(c)
     }
-    const done = chunks.find((c) => c.type === 'done')
-    expect((done as any)?.result).toBe('hello world')
+    const done = chunks.find((c): c is CodegenChunk & { type: 'done' } => c.type === 'done')
+    expect(done?.result).toBe('hello world')
   })
 
   it('throws CodegenError on failure', async () => {

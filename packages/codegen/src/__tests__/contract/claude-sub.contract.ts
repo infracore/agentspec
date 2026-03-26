@@ -32,6 +32,6 @@ beforeEach(() => vi.clearAllMocks())
 runProviderContractTests(
   'ClaudeSubscriptionProvider',
   () => new ClaudeSubscriptionProvider(),
-  makeSuccessStream as any,
+  makeSuccessStream,
   mockQuery,
 )

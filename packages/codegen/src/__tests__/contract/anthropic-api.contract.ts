@@ -21,6 +21,6 @@ beforeEach(() => vi.clearAllMocks())
 runProviderContractTests(
   'AnthropicApiProvider',
   () => new AnthropicApiProvider('test-key'),
-  makeSuccessStream as any,
+  makeSuccessStream,
   mockStream,
 )

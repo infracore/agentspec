@@ -93,7 +93,7 @@ describe('ClaudeSubscriptionProvider', () => {
   it('passes settingSources:[] and cwd to query()', async () => {
     mockQuery.mockReturnValue(makeSuccessStream('ok'))
     for await (const _ of new ClaudeSubscriptionProvider().stream('sys', 'user', {})) { /* consume */ }
-    const [{ options }] = mockQuery.mock.calls[0] as [{ prompt: string; options: Record<string, unknown> }][]
+    const [{ options }] = mockQuery.mock.calls[0]
     expect(options['settingSources']).toEqual([])
     expect(typeof options['cwd']).toBe('string')
   })

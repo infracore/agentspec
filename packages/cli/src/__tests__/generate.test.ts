@@ -15,7 +15,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 import { Command } from 'commander'
 
 // Helpers under test (exported from generate.ts — importing here causes RED until exported)
@@ -379,8 +379,7 @@ describe('generate — listFrameworks error handling', () => {
   let outDir: string
   let consoleLogSpy: ReturnType<typeof vi.spyOn>
   let consoleErrorSpy: ReturnType<typeof vi.spyOn>
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let exitSpy: any
+  let exitSpy: MockInstance
 
   beforeEach(async () => {
     outDir = mkdtempSync(join(tmpdir(), 'agentspec-lfe-test-'))
@@ -539,8 +538,7 @@ describe('generate — writeGeneratedFiles error catch', () => {
   let outDir: string
   let consoleLogSpy: ReturnType<typeof vi.spyOn>
   let consoleErrorSpy: ReturnType<typeof vi.spyOn>
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let exitSpy: any
+  let exitSpy: MockInstance
 
   beforeEach(() => {
     outDir = mkdtempSync(join(tmpdir(), 'agentspec-wgf-err-'))

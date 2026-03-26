@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest'
 import type { ProviderProbeReport } from '@agentspec/codegen'
 
 // ── Mock @agentspec/codegen before any imports ────────────────────────────────
@@ -42,10 +42,8 @@ function makeReport(provider: string | null): ProviderProbeReport {
 
 // ── Setup ─────────────────────────────────────────────────────────────────────
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let exitSpy: any
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let consoleLogSpy: any
+let exitSpy: MockInstance
+let consoleLogSpy: MockInstance
 
 beforeEach(() => {
   vi.clearAllMocks()

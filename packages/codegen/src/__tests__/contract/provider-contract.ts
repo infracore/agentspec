@@ -1,11 +1,11 @@
 import { describe, it, expect, vi } from 'vitest'
-import type { CodegenProvider } from '../../provider.js'
+import type { CodegenProvider, CodegenChunk } from '../../provider.js'
 import { CodegenError } from '../../provider.js'
 
 export function runProviderContractTests(
   providerName: string,
   makeProvider: () => CodegenProvider,
-  makeSuccessStream: (text: string) => AsyncIterable<unknown>,
+  makeSuccessStream: (text: string) => unknown,
   mockFn: ReturnType<typeof vi.fn>,
 ) {
   describe(`${providerName} — CodegenProvider contract`, () => {
@@ -16,26 +16,26 @@ export function runProviderContractTests(
 
     it('stream() yields at least one delta before done', async () => {
       mockFn.mockReturnValue(makeSuccessStream('some text'))
-      const chunks: unknown[] = []
+      const chunks: CodegenChunk[] = []
       for await (const c of makeProvider().stream('sys', 'user', {})) chunks.push(c)
-      expect(chunks.some((c: any) => c.type === 'delta')).toBe(true)
+      expect(chunks.some((c) => c.type === 'delta')).toBe(true)
     })
 
     it('stream() always ends with a done chunk', async () => {
       mockFn.mockReturnValue(makeSuccessStream('result'))
-      const chunks: unknown[] = []
+      const chunks: CodegenChunk[] = []
       for await (const c of makeProvider().stream('sys', 'user', {})) chunks.push(c)
-      expect((chunks.at(-1) as any)?.type).toBe('done')
+      expect(chunks.at(-1)?.type).toBe('done')
     })
 
     it('done chunk result equals accumulated delta text', async () => {
       mockFn.mockReturnValue(makeSuccessStream('my result'))
-      const chunks: unknown[] = []
+      const chunks: CodegenChunk[] = []
       for await (const c of makeProvider().stream('sys', 'user', {})) chunks.push(c)
-      const done = chunks.find((c: any) => c.type === 'done') as any
+      const done = chunks.find((c): c is CodegenChunk & { type: 'done' } => c.type === 'done')
       const accumulated = chunks
-        .filter((c: any) => c.type === 'delta')
-        .map((c: any) => c.text)
+        .filter((c): c is CodegenChunk & { type: 'delta' } => c.type === 'delta')
+        .map((c) => c.text)
         .join('')
       expect(done?.result).toBe(accumulated)
     })

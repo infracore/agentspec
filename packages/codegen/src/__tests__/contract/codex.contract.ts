@@ -25,6 +25,6 @@ beforeEach(() => vi.clearAllMocks())
 runProviderContractTests(
   'CodexProvider',
   () => new CodexProvider('test-key'),
-  (text: string) => makeOpenAIStream(text) as any,
+  (text: string) => makeOpenAIStream(text),
   mockStream,
 )
