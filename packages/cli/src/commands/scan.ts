@@ -1,7 +1,7 @@
 /**
  * `agentspec scan --dir <src>`
  *
- * Claude-powered source analysis: reads .py / .ts / .js files and generates
+ * LLM-powered source analysis: reads .py / .ts / .js files and generates
  * an agent.yaml manifest from what it finds.
  *
  * Output behaviour:
@@ -15,7 +15,7 @@
  *   - Symlinks are skipped (lstatSync) to prevent traversal to outside srcDir
  *   - All resolved paths are checked against the srcDir prefix
  *   - node_modules / .git / dist and other non-user dirs are excluded
- *   - Total source content is capped at 200 KB before being sent to Claude
+ *   - Total source content is capped at 200 KB before being sent to the provider
  */
 
 import {
@@ -226,8 +226,8 @@ function collectAndValidateSourceFiles(srcDir: string): SourceFile[] {
 }
 
 /**
- * Extract a ScanDetection from the raw Claude response.
- * Claude returns detection.json (raw facts) — the builder converts it to YAML.
+ * Extract a ScanDetection from the raw provider response.
+ * The provider returns detection.json (raw facts) — the builder converts it to YAML.
  * Throws with a descriptive message on any structural mismatch.
  */
 function parseDetection(rawResult: unknown): ScanDetection {
@@ -238,11 +238,11 @@ function parseDetection(rawResult: unknown): ScanDetection {
     typeof (rawResult as Record<string, unknown>).files !== 'object' ||
     (rawResult as Record<string, unknown>).files === null
   ) {
-    throw new Error('Claude returned an unexpected response format (missing "files" object).')
+    throw new Error('Provider returned an unexpected response format (missing "files" object).')
   }
   const detectionJson = (rawResult as { files: Record<string, string> }).files['detection.json']
   if (!detectionJson) {
-    throw new Error('Claude did not return detection.json in the output.')
+    throw new Error('Provider did not return detection.json in the output.')
   }
   let detection: ScanDetection
   try {
@@ -285,7 +285,7 @@ function validateManifestYaml(yamlStr: string): ValidationResult {
 export function registerScanCommand(program: Command): void {
   program
     .command('scan')
-    .description('Scan source code and generate an agent.yaml manifest (Claude-powered)')
+    .description('Scan source code and generate an agent.yaml manifest (LLM-powered)')
     .requiredOption('-d, --dir <src>', 'Source directory to scan')
     .option('--out <path>', 'Explicit output path')
     .option('--update', 'Overwrite existing agent.yaml in place')

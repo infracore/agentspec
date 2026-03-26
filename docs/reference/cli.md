@@ -104,7 +104,7 @@ See [Proof Integration Guide](../guides/proof-integration.md) for how to submit 
 
 ## `agentspec generate`
 
-Generate framework-specific agent code using Claude.
+Generate framework-specific agent code using a codegen provider.
 
 ```bash
 agentspec generate <file> --framework <fw> --output <dir>
@@ -120,8 +120,8 @@ Options:
 - `--deploy <target>` — also generate deployment manifests: `k8s` | `helm`
 - `--push` — write `.env.agentspec` with push mode env var placeholders (`AGENTSPEC_URL`, `AGENTSPEC_KEY`)
 
-**Requires Claude auth** — generation uses Claude to reason over every manifest field
-and produce complete, production-ready code. Two methods are supported (CLI first):
+**Requires a codegen provider** — generation uses an LLM to reason over every manifest field
+and produce complete, production-ready code. Three providers are supported (auto-detected):
 
 ```bash
 # Option A — Claude subscription (Pro / Max), no API key needed
@@ -131,16 +131,20 @@ agentspec generate agent.yaml --framework langgraph
 # Option B — Anthropic API key
 export ANTHROPIC_API_KEY=sk-ant-...
 agentspec generate agent.yaml --framework langgraph
+
+# Option C — OpenAI Codex
+export OPENAI_API_KEY=sk-...
+agentspec generate agent.yaml --framework langgraph
 ```
 
-Check which method is active: `agentspec claude-status`
+Check which method is active: `agentspec provider-status`
 
 **Optional env vars:**
 
 | Variable | Default | Description |
 |---|---|---|
 | `AGENTSPEC_CODEGEN_PROVIDER` | `auto` | Force provider: `claude-sub`, `anthropic-api`, or `codex` |
-| `ANTHROPIC_MODEL` | `claude-opus-4-6` | Claude model used for generation |
+| `ANTHROPIC_MODEL` | `claude-opus-4-6` | Model used for generation (Anthropic providers) |
 | `ANTHROPIC_BASE_URL` | Anthropic API | Custom proxy or private endpoint (API mode only) |
 
 ```bash
@@ -186,7 +190,7 @@ kubectl apply -f ./generated/k8s/service.yaml
 
 ### `--deploy helm`
 
-Generates a full Helm chart using Claude. **Requires `ANTHROPIC_API_KEY`.**
+Generates a full Helm chart using a codegen provider.
 
 ```bash
 agentspec generate agent.yaml --framework langgraph --deploy helm
@@ -215,7 +219,7 @@ Options:
 
 ## `agentspec scan`
 
-Scan a source directory and generate an `agent.yaml` manifest using Claude.
+Scan a source directory and generate an `agent.yaml` manifest using a codegen provider.
 
 ```bash
 agentspec scan --dir ./src/
@@ -241,7 +245,7 @@ Options:
 | `--out <path>` | that path, always |
 | `--dry-run` | stdout only |
 
-**What Claude detects:**
+**What the LLM detects:**
 
 | Pattern in source | Manifest field |
 |-------------------|---------------|
@@ -255,7 +259,7 @@ Options:
 
 Scans `.py`, `.ts`, `.js`, `.mjs`, `.cjs` files only. Excludes `node_modules/`, `.git/`, `dist/`, `.venv/` and other non-user directories. Caps at **50 files** and **200 KB** of source content per scan.
 
-**Requires Claude auth** — uses the same subscription-first resolution as `generate`.
+**Requires a codegen provider** — uses the same auto-detection as `generate`.
 
 ```bash
 # Option A — Claude subscription
@@ -263,22 +267,26 @@ claude auth login
 agentspec scan --dir ./src/ --dry-run   # preview before writing
 agentspec scan --dir ./src/             # write agent.yaml
 
-# Option B — API key
+# Option B — Anthropic API key
 export ANTHROPIC_API_KEY=sk-ant-...
+agentspec scan --dir ./src/
+
+# Option C — OpenAI Codex
+export OPENAI_API_KEY=sk-...
 agentspec scan --dir ./src/
 ```
 
-Check which method is active: `agentspec claude-status`
+Check which method is active: `agentspec provider-status`
 
 Exit codes: `0` = manifest written, `1` = auth missing or generation error.
 
-## `agentspec claude-status`
+## `agentspec provider-status`
 
-Show full Claude authentication status — which method is active, account details, API key validity, and which method `generate` / `scan` would use right now.
+Show codegen provider status — which provider is active, account details, API key validity, and which provider `generate` / `scan` would use right now.
 
 ```bash
-agentspec claude-status
-agentspec claude-status --json
+agentspec provider-status
+agentspec provider-status --json
 ```
 
 Options:
@@ -287,40 +295,40 @@ Options:
 **Example output:**
 
 ```
-  AgentSpec — Claude Status
-  ───────────────────────────
+  AgentSpec — Provider Status
+  ─────────────────────────────
 
-CLI (Claude subscription)
+Claude subscription
   ✓ Installed              yes
     Version                2.1.81 (Claude Code)
   ✓ Authenticated          yes
   ✓ Account                you@example.com
   ✓ Plan                   Claude Pro
 
-API key (Anthropic)
+Anthropic API
   ✗ ANTHROPIC_API_KEY      not set
   – ANTHROPIC_BASE_URL     not set (using default)
 
 Environment & resolution
-  – Auth mode override     not set (auto)
+  – Provider override      not set (auto-detect)
   – Model override         not set (default: claude-opus-4-6)
 
-  ✓ Would use: Claude subscription (CLI)
+  ✓ Would use: Claude subscription
 
 ──────────────────────────────────────────────────
 ✓ Ready — Claude subscription (Claude Pro) · you@example.com
-  agentspec generate and scan will use the claude CLI
+  agentspec generate and scan will use the claude-subscription provider
 ```
 
 **What it checks:**
 
 | Section | What is probed |
 |---------|---------------|
-| CLI | `claude --version`, `claude auth status` — version, login state, account email, plan |
-| API | `ANTHROPIC_API_KEY` presence + live HTTP probe to `/v1/models`, `ANTHROPIC_BASE_URL` |
-| Environment | `AGENTSPEC_CODEGEN_PROVIDER`, `ANTHROPIC_MODEL` overrides, final resolved mode |
+| Claude subscription | `claude --version`, `claude auth status` — version, login state, account email, plan |
+| Anthropic API | `ANTHROPIC_API_KEY` presence + live HTTP probe to `/v1/models`, `ANTHROPIC_BASE_URL` |
+| Environment | `AGENTSPEC_CODEGEN_PROVIDER`, `ANTHROPIC_MODEL` overrides, resolved provider |
 
-Exit codes: `0` = at least one auth method is ready, `1` = no auth configured.
+Exit codes: `0` = at least one provider is ready, `1` = no provider available.
 
 ## `agentspec diff`
 

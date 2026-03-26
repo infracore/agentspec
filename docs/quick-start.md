@@ -36,7 +36,7 @@ export ANTHROPIC_API_KEY=sk-ant-...
 agentspec scan --dir ./src/
 ```
 
-Claude reads your `.py` / `.ts` / `.js` files and infers model provider, tools, guardrails,
+The LLM reads your `.py` / `.ts` / `.js` files and infers model provider, tools, guardrails,
 memory backend, and required env vars. Review the output — it's a starting point, not a final
 answer.
 
@@ -133,21 +133,24 @@ A minimal agent will score ~45/100 (grade D). Add guardrails, evaluation, and fa
 
 ## 7. Generate LangGraph code
 
-Generation uses Claude to reason over your manifest and produce complete, production-ready code.
-AgentSpec supports two ways to authenticate — no configuration needed if you have a Claude subscription:
+Generation uses an LLM to reason over your manifest and produce complete, production-ready code.
+AgentSpec auto-detects your codegen provider — no configuration needed if you have the Claude CLI:
 
 ```bash
 # Option A — Claude subscription (Pro / Max)
-# Install the Claude CLI: https://claude.ai/download
 claude auth login
 agentspec generate agent.yaml --framework langgraph --output ./generated/
 
 # Option B — Anthropic API key
 export ANTHROPIC_API_KEY=sk-ant-...
 agentspec generate agent.yaml --framework langgraph --output ./generated/
+
+# Option C — OpenAI Codex
+export OPENAI_API_KEY=sk-...
+agentspec generate agent.yaml --framework langgraph --output ./generated/
 ```
 
-When both are available, subscription is used first. See [Claude Authentication](./guides/claude-auth) for CI setup, model overrides, and forcing a specific method.
+When multiple providers are available, Claude subscription is used first. See [Provider Authentication](./guides/provider-auth) for CI setup, model overrides, and forcing a specific provider.
 
 Generated files:
 ```

@@ -225,7 +225,7 @@ export ANTHROPIC_API_KEY=ant-...
 agentspec generate agent.yaml --framework langgraph --output ./generated/
 ```
 
-Claude reads your full manifest — model, tools, memory, guardrails, evals — and generates:
+The codegen provider reads your full manifest — model, tools, memory, guardrails, evals — and generates:
 
 ```
 generated/

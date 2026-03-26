@@ -12,8 +12,8 @@ export type { CodegenErrorCode, CodegenCallOptions } from './provider.js'
 export { AnthropicApiProvider } from './providers/anthropic-api.js'
 export { ClaudeSubscriptionProvider } from './providers/claude-sub.js'
 export { CodexProvider } from './providers/codex.js'
-export { probeClaudeAuth } from './auth-probe.js'
-export type { ClaudeProbeReport, ClaudeCliProbe, ClaudeApiProbe, ClaudeEnvProbe } from './auth-probe.js'
+export { probeProviders } from './provider-probe.js'
+export type { ProviderProbeReport, ClaudeCliProbe, AnthropicApiProbe, ProviderEnvProbe } from './provider-probe.js'
 export { repairYaml } from './repair.js'
 
 export interface CodegenOptions {

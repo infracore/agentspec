@@ -1,7 +1,7 @@
 /**
  * Deterministic manifest builder for `agentspec scan`.
  *
- * Design: Claude detects raw facts about the source code (ScanDetection JSON).
+ * Design: The LLM detects raw facts about the source code (ScanDetection JSON).
  * This module turns those facts into a valid AgentSpecManifest — pure TypeScript,
  * zero LLM involvement, compile-time schema correctness guaranteed by the types.
  *
@@ -16,7 +16,7 @@ import type {
 // ── Public interface ──────────────────────────────────────────────────────────
 
 /**
- * The raw facts Claude detects from source code.
+ * The raw facts the LLM detects from source code.
  * All string values are unprocessed (slugify is TypeScript's job).
  * Omit unknown fields rather than guessing.
  */
@@ -265,7 +265,7 @@ export function slugify(s: string): string {
 /**
  * Build a valid AgentSpecManifest from a ScanDetection object.
  *
- * This is deterministic and schema-correct — Claude never touches YAML,
+ * This is deterministic and schema-correct — the LLM never touches YAML,
  * TypeScript enforces all field names and value constraints at compile time.
  */
 export function buildManifestFromDetection(d: ScanDetection): AgentSpecManifest {

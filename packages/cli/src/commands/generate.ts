@@ -188,7 +188,7 @@ async function runDeployTarget(
 
   if (target === 'helm') {
     console.log()
-    console.log(chalk.bold('  Helm chart (Claude-generated):'))
+    console.log(chalk.bold('  Helm chart (LLM-generated):'))
     let helmGenerated: Awaited<ReturnType<typeof generateCode>>
     try {
       helmGenerated = await generateCode(manifest, { framework: 'helm', provider })

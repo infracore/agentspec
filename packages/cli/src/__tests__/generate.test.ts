@@ -6,7 +6,7 @@
  * must create the parent directory before calling writeFileSync.
  *
  * Also tests: control plane files (manifest.py, tests/, eval datasets,
- * agent.yaml copy) are written when Claude returns them in the file set.
+ * agent.yaml copy) are written when the provider returns them in the file set.
  *
  * Helper unit tests: writeGeneratedFiles and copyManifestToOutput are
  * exported for direct, Commander-free testing.
@@ -204,7 +204,7 @@ describe('generate — control plane files', () => {
 
   it('copies agent.yaml to output dir', async () => {
     await runGenerate(outDir)
-    // agent.yaml is part of the generated files returned by Claude
+    // agent.yaml is part of the generated files returned by the provider
     expect(existsSync(join(outDir, 'agent.yaml'))).toBe(true)
   })
 
@@ -321,7 +321,7 @@ describe('copyManifestToOutput helper', () => {
   it('is a no-op when basename is already in generated files set', () => {
     const src = join(srcDir, 'agent.yaml')
     writeFileSync(src, 'name: test\n', 'utf-8')
-    copyManifestToOutput(src, destDir, { 'agent.yaml': '# already written by Claude' })
+    copyManifestToOutput(src, destDir, { 'agent.yaml': '# already written by provider' })
     expect(existsSync(join(destDir, 'agent.yaml'))).toBe(false)
   })
 

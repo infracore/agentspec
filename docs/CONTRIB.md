@@ -71,7 +71,7 @@ When running `agentspec generate` locally:
 
 | Variable | Required | Default | Purpose |
 |----------|----------|---------|---------|
-| `ANTHROPIC_API_KEY` | Yes (for generate/helm) | — | Claude API key |
+| `ANTHROPIC_API_KEY` | Yes (for generate/helm) | — | Anthropic API key |
 | `ANTHROPIC_MODEL` | No | `claude-opus-4-6` | Override model |
 | `ANTHROPIC_BASE_URL` | No | Anthropic API | Custom proxy endpoint |
 

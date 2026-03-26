@@ -1,8 +1,8 @@
 /**
- * Rich diagnostic probe for Claude authentication status.
+ * Rich diagnostic probe for codegen provider availability.
  *
- * Used by `agentspec claude-status` to display detailed info about
- * both CLI subscription and API key auth availability.
+ * Used by `agentspec provider-status` to display detailed info about
+ * all available codegen providers (Claude subscription, Anthropic API, Codex).
  */
 
 import { execFileSync } from 'node:child_process'
@@ -20,7 +20,7 @@ export interface ClaudeCliProbe {
   activeModel: string | null
 }
 
-export interface ClaudeApiProbe {
+export interface AnthropicApiProbe {
   keySet: boolean
   keyPreview: string | null
   baseURLSet: boolean
@@ -30,17 +30,17 @@ export interface ClaudeApiProbe {
   probeError: string | null
 }
 
-export interface ClaudeEnvProbe {
-  authModeOverride: string | null
+export interface ProviderEnvProbe {
+  providerOverride: string | null
   modelOverride: string | null
-  resolvedMode: 'cli' | 'api' | 'none'
+  resolvedProvider: string | null
   resolveError: string | null
 }
 
-export interface ClaudeProbeReport {
-  cli: ClaudeCliProbe
-  api: ClaudeApiProbe
-  env: ClaudeEnvProbe
+export interface ProviderProbeReport {
+  claudeCli: ClaudeCliProbe
+  anthropicApi: AnthropicApiProbe
+  env: ProviderEnvProbe
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
@@ -169,7 +169,7 @@ function parseActiveModel(raw: string): string | null {
   return null
 }
 
-async function probeApiKey(apiKey: string, baseURL?: string): Promise<{
+async function probeAnthropicKey(apiKey: string, baseURL?: string): Promise<{
   valid: boolean
   status: number | null
   error: string | null
@@ -194,17 +194,17 @@ async function probeApiKey(apiKey: string, baseURL?: string): Promise<{
 // ── Public ────────────────────────────────────────────────────────────────────
 
 /**
- * Collect maximum information about the Claude auth environment.
+ * Collect diagnostic information about all available codegen providers.
  * Never throws — all errors are captured in the report.
  */
-export async function probeClaudeAuth(): Promise<ClaudeProbeReport> {
-  // ── CLI probe ──────────────────────────────────────────────────────────────
+export async function probeProviders(): Promise<ProviderProbeReport> {
+  // ── Claude CLI probe ─────────────────────────────────────────────────────
   const installed = isClaudeOnPath()
   const versionRaw = installed ? probeVersion() : null
   const authStatusRaw = installed ? probeAuthStatus() : null
   const authenticated = installed ? isClaudeAuthenticated() : false
 
-  const cliProbe: ClaudeCliProbe = {
+  const claudeCli: ClaudeCliProbe = {
     installed,
     version: versionRaw,
     authenticated,
@@ -214,7 +214,7 @@ export async function probeClaudeAuth(): Promise<ClaudeProbeReport> {
     activeModel: authStatusRaw ? parseActiveModel(authStatusRaw) : null,
   }
 
-  // ── API probe ──────────────────────────────────────────────────────────────
+  // ── Anthropic API probe ──────────────────────────────────────────────────
   const apiKey = process.env['ANTHROPIC_API_KEY'] ?? null
   const baseURL = process.env['ANTHROPIC_BASE_URL'] ?? null
   let keyValid: boolean | null = null
@@ -222,13 +222,13 @@ export async function probeClaudeAuth(): Promise<ClaudeProbeReport> {
   let probeError: string | null = null
 
   if (apiKey) {
-    const result = await probeApiKey(apiKey, baseURL ?? undefined)
+    const result = await probeAnthropicKey(apiKey, baseURL ?? undefined)
     keyValid = result.valid
     probeStatus = result.status
     probeError = result.error
   }
 
-  const apiProbe: ClaudeApiProbe = {
+  const anthropicApi: AnthropicApiProbe = {
     keySet: !!apiKey,
     keyPreview: apiKey ? `${apiKey.slice(0, 4)}…${apiKey.slice(-2)}` : null,
     baseURLSet: !!baseURL,
@@ -239,26 +239,24 @@ export async function probeClaudeAuth(): Promise<ClaudeProbeReport> {
   }
 
   // ── Env probe (uses codegen resolver) ──────────────────────────────────────
-  const authModeOverride = process.env['AGENTSPEC_CLAUDE_AUTH_MODE'] ?? null
+  const providerOverride = process.env['AGENTSPEC_CODEGEN_PROVIDER'] ?? null
   const modelOverride = process.env['ANTHROPIC_MODEL'] ?? null
 
-  let resolvedMode: 'cli' | 'api' | 'none' = 'none'
+  let resolvedProvider: string | null = null
   let resolveError: string | null = null
   try {
     const provider = resolveProvider()
-    if (provider.name === 'claude-subscription') resolvedMode = 'cli'
-    else if (provider.name === 'anthropic-api') resolvedMode = 'api'
-    else resolvedMode = 'api'
+    resolvedProvider = provider.name
   } catch (err) {
     resolveError = err instanceof Error ? err.message : String(err)
   }
 
-  const envProbe: ClaudeEnvProbe = {
-    authModeOverride,
+  const env: ProviderEnvProbe = {
+    providerOverride,
     modelOverride,
-    resolvedMode,
+    resolvedProvider,
     resolveError,
   }
 
-  return { cli: cliProbe, api: apiProbe, env: envProbe }
+  return { claudeCli, anthropicApi, env }
 }

@@ -14,7 +14,7 @@ import { registerDiffCommand } from './commands/diff.js'
 import { registerGeneratePolicyCommand } from './commands/generate-policy.js'
 import { registerEvaluateCommand } from './commands/evaluate.js'
 import { registerProbeCommand } from './commands/probe.js'
-import { registerClaudeStatusCommand } from './commands/claude-status.js'
+import { registerProviderStatusCommand } from './commands/provider-status.js'
 
 const _dir = dirname(fileURLToPath(import.meta.url))
 const { version } = JSON.parse(readFileSync(join(_dir, '../package.json'), 'utf8')) as { version: string }
@@ -38,6 +38,6 @@ registerDiffCommand(program)
 registerGeneratePolicyCommand(program)
 registerEvaluateCommand(program)
 registerProbeCommand(program)
-registerClaudeStatusCommand(program)
+registerProviderStatusCommand(program)
 
 program.parse(process.argv)

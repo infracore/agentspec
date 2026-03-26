@@ -14,7 +14,7 @@ export ANTHROPIC_API_KEY=ant-...
 agentspec scan --dir ./src/ --dry-run
 ```
 
-`--dry-run` prints the generated `agent.yaml` to stdout without writing anything. Review it — Claude infers model, tools, guardrails, memory backend, and required env vars from your source files.
+`--dry-run` prints the generated `agent.yaml` to stdout without writing anything. Review it — the LLM infers model, tools, guardrails, memory backend, and required env vars from your source files.
 
 When the output looks reasonable:
 

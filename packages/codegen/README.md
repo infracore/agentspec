@@ -109,16 +109,16 @@ import { repairYaml, resolveProvider } from '@agentspec/codegen'
 const fixed = await repairYaml(resolveProvider(), badYaml, validationErrors)
 ```
 
-### `probeClaudeAuth()`
+### `probeProviders()`
 
-Diagnostic probe for Claude auth status (used by `agentspec claude-status`):
+Diagnostic probe for all codegen providers (used by `agentspec provider-status`):
 
 ```typescript
-import { probeClaudeAuth } from '@agentspec/codegen'
+import { probeProviders } from '@agentspec/codegen'
 
-const report = await probeClaudeAuth()
-console.log(report.cli.installed)    // true
-console.log(report.env.resolvedMode) // 'cli' | 'api' | 'none'
+const report = await probeProviders()
+console.log(report.claudeCli.installed)  // true
+console.log(report.env.resolvedProvider) // 'claude-subscription' | 'anthropic-api' | 'codex' | null
 ```
 
 ## Error Handling

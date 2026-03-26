@@ -305,7 +305,7 @@ describe('scan — CLI integration', () => {
     // Auth errors (no key, no CLI) bubble up from resolveAuth inside generateCode.
     // This tests that the scan command catches and exits 1 on any generate failure.
     const { generateCode } = await import('@agentspec/codegen')
-    vi.mocked(generateCode).mockRejectedValueOnce(new Error('No Claude authentication found'))
+    vi.mocked(generateCode).mockRejectedValueOnce(new Error('No codegen provider available'))
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((_code?: number): never => {
       throw new Error(`process.exit(${_code})`)
     }) as unknown as typeof process.exit)

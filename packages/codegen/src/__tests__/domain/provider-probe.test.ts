@@ -16,15 +16,15 @@ vi.mock('../../resolver.js', () => ({
 const mockFetch = vi.hoisted(() => vi.fn())
 vi.stubGlobal('fetch', mockFetch)
 
-import { probeClaudeAuth } from '../../auth-probe.js'
+import { probeProviders } from '../../provider-probe.js'
 
-describe('probeClaudeAuth()', () => {
+describe('probeProviders()', () => {
   const savedEnv: Record<string, string | undefined> = {}
 
   beforeEach(() => {
     vi.clearAllMocks()
     // Save and clear env vars
-    for (const key of ['ANTHROPIC_API_KEY', 'ANTHROPIC_BASE_URL', 'AGENTSPEC_CLAUDE_AUTH_MODE', 'ANTHROPIC_MODEL']) {
+    for (const key of ['ANTHROPIC_API_KEY', 'ANTHROPIC_BASE_URL', 'AGENTSPEC_CODEGEN_PROVIDER', 'ANTHROPIC_MODEL']) {
       savedEnv[key] = process.env[key]
       delete process.env[key]
     }
@@ -42,10 +42,10 @@ describe('probeClaudeAuth()', () => {
       mockExecFileSync.mockImplementation(() => { throw new Error('not found') })
       mockResolveProvider.mockImplementation(() => { throw new Error('none') })
 
-      const report = await probeClaudeAuth()
-      expect(report.cli.installed).toBe(false)
-      expect(report.cli.version).toBeNull()
-      expect(report.cli.authenticated).toBe(false)
+      const report = await probeProviders()
+      expect(report.claudeCli.installed).toBe(false)
+      expect(report.claudeCli.version).toBeNull()
+      expect(report.claudeCli.authenticated).toBe(false)
     })
 
     it('reports installed=true and parses version', async () => {
@@ -56,9 +56,9 @@ describe('probeClaudeAuth()', () => {
       })
       mockResolveProvider.mockReturnValue({ name: 'claude-subscription' })
 
-      const report = await probeClaudeAuth()
-      expect(report.cli.installed).toBe(true)
-      expect(report.cli.version).toBe('2.1.84 (Claude Code)')
+      const report = await probeProviders()
+      expect(report.claudeCli.installed).toBe(true)
+      expect(report.claudeCli.version).toBe('2.1.84 (Claude Code)')
     })
 
     it('detects authentication from JSON output', async () => {
@@ -69,8 +69,8 @@ describe('probeClaudeAuth()', () => {
       })
       mockResolveProvider.mockReturnValue({ name: 'claude-subscription' })
 
-      const report = await probeClaudeAuth()
-      expect(report.cli.authenticated).toBe(true)
+      const report = await probeProviders()
+      expect(report.claudeCli.authenticated).toBe(true)
     })
 
     it('detects not authenticated from "not logged in" text', async () => {
@@ -81,8 +81,8 @@ describe('probeClaudeAuth()', () => {
       })
       mockResolveProvider.mockReturnValue({ name: 'claude-subscription' })
 
-      const report = await probeClaudeAuth()
-      expect(report.cli.authenticated).toBe(false)
+      const report = await probeProviders()
+      expect(report.claudeCli.authenticated).toBe(false)
     })
 
     it('parses email from auth status', async () => {
@@ -93,8 +93,8 @@ describe('probeClaudeAuth()', () => {
       })
       mockResolveProvider.mockReturnValue({ name: 'claude-subscription' })
 
-      const report = await probeClaudeAuth()
-      expect(report.cli.accountEmail).toBe('alice@example.com')
+      const report = await probeProviders()
+      expect(report.claudeCli.accountEmail).toBe('alice@example.com')
     })
 
     it('parses plan from auth status', async () => {
@@ -105,8 +105,8 @@ describe('probeClaudeAuth()', () => {
       })
       mockResolveProvider.mockReturnValue({ name: 'claude-subscription' })
 
-      const report = await probeClaudeAuth()
-      expect(report.cli.plan).toBe('Claude Max')
+      const report = await probeProviders()
+      expect(report.claudeCli.plan).toBe('Claude Max')
     })
 
     it('parses Claude Pro plan', async () => {
@@ -117,8 +117,8 @@ describe('probeClaudeAuth()', () => {
       })
       mockResolveProvider.mockReturnValue({ name: 'claude-subscription' })
 
-      const report = await probeClaudeAuth()
-      expect(report.cli.plan).toBe('Claude Pro')
+      const report = await probeProviders()
+      expect(report.claudeCli.plan).toBe('Claude Pro')
     })
   })
 
@@ -127,10 +127,10 @@ describe('probeClaudeAuth()', () => {
       mockExecFileSync.mockImplementation(() => { throw new Error('not found') })
       mockResolveProvider.mockImplementation(() => { throw new Error('none') })
 
-      const report = await probeClaudeAuth()
-      expect(report.api.keySet).toBe(false)
-      expect(report.api.keyPreview).toBeNull()
-      expect(report.api.keyValid).toBeNull()
+      const report = await probeProviders()
+      expect(report.anthropicApi.keySet).toBe(false)
+      expect(report.anthropicApi.keyPreview).toBeNull()
+      expect(report.anthropicApi.keyValid).toBeNull()
     })
 
     it('reports keySet=true and probes API when key is set', async () => {
@@ -139,11 +139,11 @@ describe('probeClaudeAuth()', () => {
       mockResolveProvider.mockReturnValue({ name: 'anthropic-api' })
       mockFetch.mockResolvedValue({ ok: true, status: 200 })
 
-      const report = await probeClaudeAuth()
-      expect(report.api.keySet).toBe(true)
-      expect(report.api.keyPreview).toBe('sk-a…23')
-      expect(report.api.keyValid).toBe(true)
-      expect(report.api.probeStatus).toBe(200)
+      const report = await probeProviders()
+      expect(report.anthropicApi.keySet).toBe(true)
+      expect(report.anthropicApi.keyPreview).toBe('sk-a…23')
+      expect(report.anthropicApi.keyValid).toBe(true)
+      expect(report.anthropicApi.probeStatus).toBe(200)
     })
 
     it('reports keyValid=false on HTTP 401', async () => {
@@ -152,10 +152,10 @@ describe('probeClaudeAuth()', () => {
       mockResolveProvider.mockReturnValue({ name: 'anthropic-api' })
       mockFetch.mockResolvedValue({ ok: false, status: 401 })
 
-      const report = await probeClaudeAuth()
-      expect(report.api.keyValid).toBe(false)
-      expect(report.api.probeStatus).toBe(401)
-      expect(report.api.probeError).toBe('HTTP 401')
+      const report = await probeProviders()
+      expect(report.anthropicApi.keyValid).toBe(false)
+      expect(report.anthropicApi.probeStatus).toBe(401)
+      expect(report.anthropicApi.probeError).toBe('HTTP 401')
     })
 
     it('reports probeError on fetch failure', async () => {
@@ -164,10 +164,10 @@ describe('probeClaudeAuth()', () => {
       mockResolveProvider.mockReturnValue({ name: 'anthropic-api' })
       mockFetch.mockRejectedValue(new Error('network error'))
 
-      const report = await probeClaudeAuth()
-      expect(report.api.keyValid).toBe(false)
-      expect(report.api.probeStatus).toBeNull()
-      expect(report.api.probeError).toContain('network error')
+      const report = await probeProviders()
+      expect(report.anthropicApi.keyValid).toBe(false)
+      expect(report.anthropicApi.probeStatus).toBeNull()
+      expect(report.anthropicApi.probeError).toContain('network error')
     })
 
     it('includes custom base URL when set', async () => {
@@ -175,14 +175,14 @@ describe('probeClaudeAuth()', () => {
       mockExecFileSync.mockImplementation(() => { throw new Error('not found') })
       mockResolveProvider.mockImplementation(() => { throw new Error('none') })
 
-      const report = await probeClaudeAuth()
-      expect(report.api.baseURLSet).toBe(true)
-      expect(report.api.baseURL).toBe('https://proxy.example.com')
+      const report = await probeProviders()
+      expect(report.anthropicApi.baseURLSet).toBe(true)
+      expect(report.anthropicApi.baseURL).toBe('https://proxy.example.com')
     })
   })
 
   describe('env probe', () => {
-    it('reports resolvedMode=cli when provider is claude-subscription', async () => {
+    it('reports resolvedProvider=claude-subscription when provider is claude-subscription', async () => {
       mockExecFileSync.mockImplementation((_cmd: string, args: string[]) => {
         if (args[0] === '--version') return '2.1.84'
         if (args[0] === 'auth') return '{"loggedIn": true}'
@@ -190,34 +190,34 @@ describe('probeClaudeAuth()', () => {
       })
       mockResolveProvider.mockReturnValue({ name: 'claude-subscription' })
 
-      const report = await probeClaudeAuth()
-      expect(report.env.resolvedMode).toBe('cli')
+      const report = await probeProviders()
+      expect(report.env.resolvedProvider).toBe('claude-subscription')
     })
 
-    it('reports resolvedMode=api when provider is anthropic-api', async () => {
+    it('reports resolvedProvider=anthropic-api when provider is anthropic-api', async () => {
       mockExecFileSync.mockImplementation(() => { throw new Error('not found') })
       mockResolveProvider.mockReturnValue({ name: 'anthropic-api' })
 
-      const report = await probeClaudeAuth()
-      expect(report.env.resolvedMode).toBe('api')
+      const report = await probeProviders()
+      expect(report.env.resolvedProvider).toBe('anthropic-api')
     })
 
-    it('reports resolvedMode=none with error when no provider available', async () => {
+    it('reports resolvedProvider=null with error when no provider available', async () => {
       mockExecFileSync.mockImplementation(() => { throw new Error('not found') })
       mockResolveProvider.mockImplementation(() => { throw new Error('No codegen provider available.') })
 
-      const report = await probeClaudeAuth()
-      expect(report.env.resolvedMode).toBe('none')
+      const report = await probeProviders()
+      expect(report.env.resolvedProvider).toBeNull()
       expect(report.env.resolveError).toContain('No codegen provider')
     })
 
-    it('captures AGENTSPEC_CLAUDE_AUTH_MODE override', async () => {
-      process.env['AGENTSPEC_CLAUDE_AUTH_MODE'] = 'api'
+    it('captures AGENTSPEC_CODEGEN_PROVIDER override', async () => {
+      process.env['AGENTSPEC_CODEGEN_PROVIDER'] = 'anthropic-api'
       mockExecFileSync.mockImplementation(() => { throw new Error('not found') })
       mockResolveProvider.mockImplementation(() => { throw new Error('none') })
 
-      const report = await probeClaudeAuth()
-      expect(report.env.authModeOverride).toBe('api')
+      const report = await probeProviders()
+      expect(report.env.providerOverride).toBe('anthropic-api')
     })
 
     it('captures ANTHROPIC_MODEL override', async () => {
@@ -225,7 +225,7 @@ describe('probeClaudeAuth()', () => {
       mockExecFileSync.mockImplementation(() => { throw new Error('not found') })
       mockResolveProvider.mockImplementation(() => { throw new Error('none') })
 
-      const report = await probeClaudeAuth()
+      const report = await probeProviders()
       expect(report.env.modelOverride).toBe('claude-sonnet-4-6')
     })
   })
@@ -235,22 +235,22 @@ describe('probeClaudeAuth()', () => {
       mockExecFileSync.mockImplementation(() => { throw new Error('fail') })
       mockResolveProvider.mockImplementation(() => { throw new Error('fail') })
 
-      const report = await probeClaudeAuth()
+      const report = await probeProviders()
 
       // Should have all three sections
-      expect(report).toHaveProperty('cli')
-      expect(report).toHaveProperty('api')
+      expect(report).toHaveProperty('claudeCli')
+      expect(report).toHaveProperty('anthropicApi')
       expect(report).toHaveProperty('env')
 
       // CLI section — not installed
-      expect(report.cli.installed).toBe(false)
-      expect(report.cli.authenticated).toBe(false)
+      expect(report.claudeCli.installed).toBe(false)
+      expect(report.claudeCli.authenticated).toBe(false)
 
       // API section — no key
-      expect(report.api.keySet).toBe(false)
+      expect(report.anthropicApi.keySet).toBe(false)
 
       // Env section — no provider
-      expect(report.env.resolvedMode).toBe('none')
+      expect(report.env.resolvedProvider).toBeNull()
     })
   })
 })

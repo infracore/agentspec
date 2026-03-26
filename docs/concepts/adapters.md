@@ -82,10 +82,10 @@ export AGENTSPEC_CODEGEN_PROVIDER=codex            # use OpenAI Codex
 ### Check your auth status
 
 ```bash
-agentspec claude-status
+agentspec provider-status
 ```
 
-See the [Claude Authentication guide](../guides/claude-auth) for full details, CI setup, and overrides.
+See the [Provider Authentication guide](../guides/provider-auth) for full details, CI setup, and overrides.
 
 ---
 
@@ -286,7 +286,7 @@ Every manifest field maps to a concept in generated code. Exact class names vary
 
 ## See also
 
-- [Claude Authentication](../guides/claude-auth) — subscription vs API key, CI setup, overrides
+- [Provider Authentication](../guides/provider-auth) — subscription vs API key, CI setup, overrides
 - [LangGraph adapter](../adapters/langgraph.md) — generated files and manifest mapping
 - [CrewAI adapter](../adapters/crewai.md) — generated files and manifest mapping
 - [Mastra adapter](../adapters/mastra.md) — generated files and manifest mapping

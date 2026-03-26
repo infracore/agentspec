@@ -51,7 +51,7 @@ agent.yaml  (single source of truth)
     ├──audit───────────▶  OWASP LLM Top 10 compliance score
     ├──generate────────▶  LLM agent reads manifest → outputs framework code
     │   ├──deploy k8s──▶  k8s/ Deployment + Service + ConfigMap + Secret (deterministic)
-    │   └──deploy helm─▶  full Helm chart with agentspec-sidecar (Claude-generated)
+    │   └──deploy helm─▶  full Helm chart with agentspec-sidecar (LLM-generated)
     ├──generate-policy─▶  Rego bundle → OPA sidecar (behavioral enforcement)
     │                         deny if guardrail not invoked
     │                         deny if cost limit exceeded

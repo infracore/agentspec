@@ -1,17 +1,18 @@
-# Claude Authentication
+# Provider Authentication
 
-Configure how AgentSpec connects to Claude for code generation (`agentspec generate`) and source scanning (`agentspec scan`).
+Configure how AgentSpec connects to a codegen provider for code generation (`agentspec generate`) and source scanning (`agentspec scan`).
 
 ## Overview
 
-AgentSpec supports two authentication methods and automatically picks the right one — no configuration required in most cases.
+AgentSpec supports three codegen providers and automatically picks the best one — no configuration required in most cases.
 
-| Method | Who it's for | What you need |
-|--------|-------------|---------------|
+| Provider | Who it's for | What you need |
+|----------|-------------|---------------|
 | **Claude subscription** (Pro / Max) | Anyone with a Claude.ai paid plan | Claude CLI installed and logged in |
-| **Anthropic API key** | Teams using the API directly | `ANTHROPIC_API_KEY` env var |
+| **Anthropic API** | Teams using the Anthropic API directly | `ANTHROPIC_API_KEY` env var |
+| **Codex (OpenAI)** | Teams using OpenAI | `OPENAI_API_KEY` env var |
 
-When both are available, **Claude subscription is used first**. You can override this at any time.
+When multiple providers are available, **Claude subscription is used first**. You can override this at any time.
 
 ---
 
@@ -20,40 +21,41 @@ When both are available, **Claude subscription is used first**. You can override
 Before setting anything up, run:
 
 ```bash
-agentspec claude-status
+agentspec provider-status
 ```
 
-This shows exactly what is installed, whether you are authenticated, which plan you are on, and which method `generate` / `scan` will use right now.
+This shows all available providers, whether you are authenticated, and which provider `generate` / `scan` will use.
 
 ```
-  AgentSpec — Claude Status
-  ───────────────────────────
+  AgentSpec — Provider Status
+  ─────────────────────────────
 
-CLI (Claude subscription)
+Claude subscription
   ✓ Installed              yes
     Version                2.1.81 (Claude Code)
   ✓ Authenticated          yes
   ✓ Account                you@example.com
   ✓ Plan                   Claude Pro
 
-API key (Anthropic)
+Anthropic API
   ✗ ANTHROPIC_API_KEY      not set
   – ANTHROPIC_BASE_URL     not set (using default)
 
 Environment & resolution
-  – Auth mode override     not set (auto)
+  – Provider override      not set (auto-detect)
   – Model override         not set (default: claude-opus-4-6)
 
-  ✓ Would use: Claude subscription (CLI)
+  ✓ Would use: Claude subscription
 
 ──────────────────────────────────────────────────
 ✓ Ready — Claude subscription (Claude Pro) · you@example.com
+  agentspec generate and scan will use the claude-subscription provider
 ```
 
 Machine-readable output for CI:
 
 ```bash
-agentspec claude-status --json
+agentspec provider-status --json
 ```
 
 Exit codes: `0` = ready, `1` = no auth configured.
@@ -147,19 +149,20 @@ The spinner shows:
 
 ## Resolution order (auto mode)
 
-When `AGENTSPEC_CODEGEN_PROVIDER` is not set, AgentSpec resolves auth in this order:
+When `AGENTSPEC_CODEGEN_PROVIDER` is not set, AgentSpec resolves providers in this order:
 
 ```
-1. Claude CLI installed + logged in?  →  use subscription
-2. ANTHROPIC_API_KEY set?             →  use API
-3. Neither                            →  error with both setup options
+1. Claude CLI installed + logged in?  →  use claude-subscription
+2. ANTHROPIC_API_KEY set?             →  use anthropic-api
+3. OPENAI_API_KEY set?                →  use codex
+4. None available                     →  error with setup options
 ```
 
 This means **subscription always wins when available**. If you have both, the API key is ignored unless you force it.
 
 ---
 
-## Force a specific method
+## Force a specific provider
 
 ```bash
 # Always use subscription (fails fast if not logged in)
@@ -224,10 +227,11 @@ variables:
 
 | Error | Cause | Fix |
 |-------|-------|-----|
-| `No Claude authentication found` | Neither CLI nor API key available | Install Claude CLI and log in, or set `ANTHROPIC_API_KEY` |
-| `AGENTSPEC_CODEGEN_PROVIDER=claude-sub but claude is not authenticated` | Forced CLI mode, not logged in | Run `claude auth login` |
-| `AGENTSPEC_CODEGEN_PROVIDER=anthropic-api but ANTHROPIC_API_KEY is not set` | Forced API mode, no key | Set `ANTHROPIC_API_KEY` |
-| `Claude CLI timed out after 300s` | Generation too large for default timeout | Use `--framework` with a smaller manifest, or switch to API mode |
+| `No codegen provider available` | No provider could be resolved | Install Claude CLI, set `ANTHROPIC_API_KEY`, or set `OPENAI_API_KEY` |
+| `AGENTSPEC_CODEGEN_PROVIDER=claude-sub but claude is not authenticated` | Forced to claude-subscription, not logged in | Run `claude auth login` |
+| `AGENTSPEC_CODEGEN_PROVIDER=anthropic-api but ANTHROPIC_API_KEY is not set` | Forced to anthropic-api, no key | Set `ANTHROPIC_API_KEY` |
+| `AGENTSPEC_CODEGEN_PROVIDER=codex but OPENAI_API_KEY is not set` | Forced to codex, no key | Set `OPENAI_API_KEY` |
+| `Claude CLI timed out after 300s` | Generation too large for default timeout | Switch to anthropic-api provider |
 | `Claude CLI is not authenticated` | CLI installed but session expired | Run `claude auth login` again |
 
 ---

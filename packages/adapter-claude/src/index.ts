@@ -8,8 +8,8 @@
  *
  * Migration guide:
  *   generateWithClaude(manifest, opts)  →  generateCode(manifest, opts)
- *   resolveAuth()                       →  resolveProvider()
- *   listFrameworks()                    →  listFrameworks()  (same name)
+ *   resolveAuth().provider              →  resolveProvider()
+ *   listFrameworks()                    →  listFrameworks()  (unchanged)
  *   repairYaml(yaml, errors)            →  repairYaml(provider, yaml, errors)
  */
 
@@ -52,9 +52,8 @@ export interface ClaudeAdapterOptions {
 /** @deprecated Use CodegenChunk from @agentspec/codegen */
 export type GenerationProgress = CodegenChunk
 
-/** @deprecated Use AuthResolution from @agentspec/codegen's resolveProvider() */
+/** @deprecated Use resolveProvider() from @agentspec/codegen directly */
 export interface AuthResolution {
-  mode: 'cli' | 'api'
   provider: CodegenProvider
 }
 
@@ -77,8 +76,7 @@ export async function generateWithClaude(
 export function resolveAuth(): AuthResolution {
   warnDeprecated('resolveAuth')
   const provider = resolveProvider()
-  const mode = provider.name === 'claude-subscription' ? 'cli' : 'api'
-  return { mode, provider }
+  return { provider }
 }
 
 /**

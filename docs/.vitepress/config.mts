@@ -61,7 +61,7 @@ export default defineConfig({
               { text: 'Add Tools',             link: '/guides/add-tools' },
               { text: 'Add Memory',            link: '/guides/add-memory' },
               { text: 'Add Guardrails',        link: '/guides/add-guardrails' },
-              { text: 'Claude Authentication', link: '/guides/claude-auth' },
+              { text: 'Provider Authentication', link: '/guides/provider-auth' },
             ],
           },
           {
