@@ -22,6 +22,11 @@ generating the requested output from the manifest.
 
 ## Output Format
 
+**CRITICAL — never split your response.** Return ALL files in a single JSON object in
+a single response. Never write "Part 1 of N", "Continuing in parts", or any multi-block
+structure. No matter how many files the spec requires, they must all appear under the
+`files` key of one JSON object. Do not truncate any file.
+
 Return a **single JSON object** (wrapped in ` ```json ... ``` `) with this exact shape:
 
 ```json

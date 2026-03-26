@@ -4,7 +4,7 @@ import { basename, dirname, join, resolve, sep } from 'node:path'
 import chalk from 'chalk'
 import { spinner } from '../utils/spinner.js'
 import { loadManifest } from '@agentspec/sdk'
-import { generateWithClaude, listFrameworks, resolveAuth, type AuthResolution } from '@agentspec/adapter-claude'
+import { generateCode, listFrameworks, resolveProvider, type CodegenProvider } from '@agentspec/codegen'
 import { printHeader, printError, printSuccess } from '../utils/output.js'
 import { generateK8sManifests } from '../deploy/k8s.js'
 
@@ -68,13 +68,17 @@ function validateFramework(framework: string): void {
     available = listFrameworks()
   } catch {
     printError(
-      'Failed to load available frameworks. ' +
-        'Is @agentspec/adapter-claude installed correctly?',
+      'Failed to load available frameworks. Is @agentspec/codegen installed correctly?\n' +
+        '  Try: pnpm --filter @agentspec/codegen build',
     )
     process.exit(1)
   }
   if (!available.includes(framework)) {
-    printError(`Unknown framework "${framework}". Available: ${available.join(', ')}`)
+    printError(
+      `Framework "${framework}" is not supported.\n` +
+        `  Available: ${available.join(', ')}\n` +
+        `  Add a new one: packages/codegen/src/skills/${framework}.md`,
+    )
     process.exit(1)
   }
 }
@@ -100,22 +104,20 @@ async function handleLLMGeneration(
   framework: string,
   manifestDir: string,
   spin: ReturnType<typeof spinner>,
-  authLabel: string,
-  auth: AuthResolution,
-): Promise<Awaited<ReturnType<typeof generateWithClaude>>> {
+  provider: CodegenProvider,
+): Promise<Awaited<ReturnType<typeof generateCode>>> {
   try {
-    return await generateWithClaude(manifest, {
+    return await generateCode(manifest, {
       framework,
       manifestDir,
-      auth,
-      onProgress: ({ outputChars, elapsedSec, stderrTail }) => {
-        const kb = (outputChars / 1024).toFixed(1)
-        const elapsed = elapsedSec !== undefined ? ` · ${elapsedSec}s` : ''
-        const chars = outputChars > 0 ? ` · ${kb}k chars` : ''
-        // Show live stderr tail when there's no output yet — reveals quota errors,
-        // auth prompts, or any other CLI status messages before they cause a timeout.
-        const tail = outputChars === 0 && stderrTail ? ` · ${stderrTail.split('\n').at(-1)?.slice(0, 60)}` : ''
-        spin.message(`Generating with ${authLabel}${elapsed}${chars}${tail}`)
+      provider,
+      onChunk: (chunk) => {
+        if (chunk.type === 'delta' || chunk.type === 'heartbeat') {
+          const kb = chunk.type === 'delta'
+            ? ` · ${(chunk.accumulated.length / 1024).toFixed(1)}k chars`
+            : ''
+          spin.message(`Generating with ${provider.name} · ${chunk.elapsedSec}s${kb}`)
+        }
       },
     })
   } catch (err) {
@@ -174,6 +176,7 @@ async function runDeployTarget(
   target: DeployTarget,
   manifest: Awaited<ReturnType<typeof loadManifest>>['manifest'],
   outDir: string,
+  provider: CodegenProvider,
 ): Promise<void> {
   if (target === 'k8s') {
     console.log()
@@ -186,9 +189,9 @@ async function runDeployTarget(
   if (target === 'helm') {
     console.log()
     console.log(chalk.bold('  Helm chart (Claude-generated):'))
-    let helmGenerated: Awaited<ReturnType<typeof generateWithClaude>>
+    let helmGenerated: Awaited<ReturnType<typeof generateCode>>
     try {
-      helmGenerated = await generateWithClaude(manifest, { framework: 'helm' })
+      helmGenerated = await generateCode(manifest, { framework: 'helm', provider })
     } catch (err) {
       printError(`Helm generation failed: ${String(err)}`)
       process.exit(1)
@@ -201,7 +204,10 @@ export function registerGenerateCommand(program: Command): void {
   program
     .command('generate <file>')
     .description('Generate framework-specific agent code from a manifest')
-    .requiredOption('--framework <fw>', 'Target framework (langgraph, crewai, mastra)')
+    .requiredOption(
+      '--framework <fw>',
+      'Target framework (e.g. langgraph, crewai, mastra)',
+    )
     .option('--output <dir>', 'Output directory', './generated')
     .option('--dry-run', 'Print generated files without writing them')
     .option(
@@ -209,10 +215,14 @@ export function registerGenerateCommand(program: Command): void {
       `Also generate deployment manifests: ${DEPLOY_TARGETS.join(', ')}`,
     )
     .option('--push', 'Write .env.agentspec with push mode env var placeholders')
+    .option(
+      '--provider <name>',
+      'Override codegen provider: claude-sub, anthropic-api, codex',
+    )
     .action(
       async (
         file: string,
-        opts: { framework: string; output: string; dryRun?: boolean; deploy?: string; push?: boolean },
+        opts: { framework: string; output: string; dryRun?: boolean; deploy?: string; push?: boolean; provider?: string },
       ) => {
         validateFramework(opts.framework)
 
@@ -240,26 +250,20 @@ export function registerGenerateCommand(program: Command): void {
         // ── LLM-driven generation (framework code or helm chart) ─────────────
         printHeader(`AgentSpec Generate — ${opts.framework}`)
 
-        // Start spinner immediately — resolveAuth() runs two blocking subprocesses
-        // (claude --version + claude auth status) which would otherwise leave the
-        // terminal frozen with no feedback before the spinner appears.
+        // Start spinner immediately — resolveProvider() may probe the claude CLI
+        // (a blocking subprocess) which would otherwise leave the terminal frozen.
         const spin = spinner()
-        spin.start('Checking auth…')
+        spin.start('Checking provider…')
 
-        // Resolve auth once — pass it into generateWithClaude to avoid a second
-        // subprocess invocation inside the adapter (PERF-01).
-        let auth: AuthResolution | undefined
-        let authLabel: string
+        let provider: CodegenProvider
         try {
-          auth = resolveAuth()
-          const displayModel = process.env['ANTHROPIC_MODEL'] ?? 'claude-opus-4-6'
-          authLabel = auth.mode === 'cli' ? 'Claude (subscription)' : `${displayModel} (API)`
+          provider = resolveProvider(opts.provider)
         } catch (err) {
-          spin.stop('Auth failed')
-          printError(`Claude auth failed: ${String(err)}`)
+          spin.stop('Provider unavailable')
+          printError(`Codegen provider unavailable: ${String(err)}`)
           process.exit(1)
         }
-        spin.message(`Generating with ${authLabel}`)
+        spin.message(`Generating with ${provider.name}`)
 
         const manifestDir = dirname(resolve(file))
         const generated = await handleLLMGeneration(
@@ -267,8 +271,7 @@ export function registerGenerateCommand(program: Command): void {
           opts.framework,
           manifestDir,
           spin,
-          authLabel!,
-          auth!,
+          provider,
         )
 
         const totalKb = (
@@ -291,8 +294,6 @@ export function registerGenerateCommand(program: Command): void {
           process.exit(1)
         }
 
-        // Copy source manifest to output dir (safety net for frameworks that don't
-        // generate agent.yaml — Claude's updated langgraph.md skill always includes it)
         copyManifestToOutput(file, outDir, generated.files)
 
         if (opts.push) {
@@ -300,7 +301,7 @@ export function registerGenerateCommand(program: Command): void {
         }
 
         if (opts.deploy === 'helm') {
-          await runDeployTarget('helm', parsed.manifest, outDir)
+          await runDeployTarget('helm', parsed.manifest, outDir, provider)
         }
 
         printPostGeneration(generated, opts.output)

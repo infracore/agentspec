@@ -35,10 +35,10 @@ vi.mock('../deploy/k8s.js', () => ({
   })),
 }))
 
-vi.mock('@agentspec/adapter-claude', () => ({
+vi.mock('@agentspec/codegen', () => ({
   listFrameworks: vi.fn(() => ['langgraph', 'crewai', 'mastra']),
-  resolveAuth: vi.fn(() => ({ mode: 'api', apiKey: 'sk-ant-test' })),
-  generateWithClaude: vi.fn().mockResolvedValue({
+  resolveProvider: vi.fn(() => ({ name: 'anthropic-api', stream: vi.fn() })),
+  generateCode: vi.fn().mockResolvedValue({
     files: {
       'agent.py': '# agent',
       'tools.py': '# tools',
@@ -402,7 +402,7 @@ describe('generate — listFrameworks error handling', () => {
   })
 
   it('prints user-friendly error message when listFrameworks throws', async () => {
-    const { listFrameworks } = await import('@agentspec/adapter-claude')
+    const { listFrameworks } = await import('@agentspec/codegen')
     vi.mocked(listFrameworks).mockImplementationOnce(() => {
       throw new Error('ENOENT: no such file or directory, scandir \'/some/skills\'')
     })
@@ -411,12 +411,12 @@ describe('generate — listFrameworks error handling', () => {
 
     // printError writes to console.error — verify the helpful hint is present
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining('@agentspec/adapter-claude'),
+      expect.stringContaining('@agentspec/codegen'),
     )
   })
 
   it('calls process.exit(1) when listFrameworks throws', async () => {
-    const { listFrameworks } = await import('@agentspec/adapter-claude')
+    const { listFrameworks } = await import('@agentspec/codegen')
     vi.mocked(listFrameworks).mockImplementationOnce(() => {
       throw new Error('ENOENT: skills directory missing')
     })
@@ -504,10 +504,10 @@ describe('generate --dry-run (LLM path)', () => {
       '--dry-run',
     ])
 
-    // With --dry-run, generateWithClaude runs but writeGeneratedFiles is NOT called
+    // With --dry-run, generateCode runs but writeGeneratedFiles is NOT called
     // outDir should contain NO written agent code files
-    const { generateWithClaude } = await import('@agentspec/adapter-claude')
-    expect(vi.mocked(generateWithClaude)).toHaveBeenCalledOnce()
+    const { generateCode } = await import('@agentspec/codegen')
+    expect(vi.mocked(generateCode)).toHaveBeenCalledOnce()
     // Output dir should be empty (dry-run skips writing)
     const { existsSync } = await import('node:fs')
     expect(existsSync(join(outDir, 'agent.py'))).toBe(false)
@@ -561,10 +561,10 @@ describe('generate — writeGeneratedFiles error catch', () => {
     delete process.env['ANTHROPIC_API_KEY']
   })
 
-  it('calls process.exit(1) when generateWithClaude returns path traversal filename', async () => {
+  it('calls process.exit(1) when generateCode returns path traversal filename', async () => {
     // Return a path traversal filename that writeGeneratedFiles will reject
-    const { generateWithClaude } = await import('@agentspec/adapter-claude')
-    vi.mocked(generateWithClaude).mockResolvedValueOnce({
+    const { generateCode } = await import('@agentspec/codegen')
+    vi.mocked(generateCode).mockResolvedValueOnce({
       framework: 'langgraph',
       files: { '../../evil.txt': 'malicious content' },
       installCommands: [],
@@ -589,9 +589,9 @@ describe('generate — writeGeneratedFiles error catch', () => {
     expect(exitSpy).toHaveBeenCalledWith(1)
   })
 
-  it('calls process.exit(1) when generateWithClaude itself throws (lines 212-215)', async () => {
-    const { generateWithClaude } = await import('@agentspec/adapter-claude')
-    vi.mocked(generateWithClaude).mockRejectedValueOnce(new Error('LLM API timeout'))
+  it('calls process.exit(1) when generateCode itself throws (lines 212-215)', async () => {
+    const { generateCode } = await import('@agentspec/codegen')
+    vi.mocked(generateCode).mockRejectedValueOnce(new Error('LLM API timeout'))
 
     const { registerGenerateCommand } = await import('../commands/generate.js')
     const program = new Command()
@@ -679,9 +679,9 @@ describe('generate --deploy helm', () => {
     delete process.env['ANTHROPIC_API_KEY']
   })
 
-  it('calls generateWithClaude twice when --deploy helm is set', async () => {
-    const { generateWithClaude } = await import('@agentspec/adapter-claude')
-    vi.mocked(generateWithClaude).mockResolvedValue({
+  it('calls generateCode twice when --deploy helm is set', async () => {
+    const { generateCode } = await import('@agentspec/codegen')
+    vi.mocked(generateCode).mockResolvedValue({
       framework: 'langgraph',
       files: { 'agent.py': '# agent', 'agent.yaml': '# manifest' },
       installCommands: [],
@@ -692,9 +692,9 @@ describe('generate --deploy helm', () => {
     await runGenerateWithDeploy(outDir, 'helm')
 
     // Called once for main langgraph generation, once for helm chart generation
-    expect(vi.mocked(generateWithClaude)).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(generateCode)).toHaveBeenCalledTimes(2)
     // Second call should use 'helm' framework
-    const calls = vi.mocked(generateWithClaude).mock.calls
+    const calls = vi.mocked(generateCode).mock.calls
     expect(calls[1][1]).toMatchObject({ framework: 'helm' })
   })
 })

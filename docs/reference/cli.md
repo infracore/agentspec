@@ -139,7 +139,7 @@ Check which method is active: `agentspec claude-status`
 
 | Variable | Default | Description |
 |---|---|---|
-| `AGENTSPEC_CLAUDE_AUTH_MODE` | `auto` | Force `cli` or `api` auth method |
+| `AGENTSPEC_CODEGEN_PROVIDER` | `auto` | Force provider: `claude-sub`, `anthropic-api`, or `codex` |
 | `ANTHROPIC_MODEL` | `claude-opus-4-6` | Claude model used for generation |
 | `ANTHROPIC_BASE_URL` | Anthropic API | Custom proxy or private endpoint (API mode only) |
 
@@ -147,7 +147,7 @@ Check which method is active: `agentspec claude-status`
 # Use a faster/cheaper model
 export ANTHROPIC_MODEL=claude-sonnet-4-6
 # Force API mode in CI
-export AGENTSPEC_CLAUDE_AUTH_MODE=api
+export AGENTSPEC_CODEGEN_PROVIDER=anthropic-api
 
 agentspec generate agent.yaml --framework langgraph
 ```
@@ -229,6 +229,7 @@ Options:
 - `--out <path>` — explicit output path (default: `./agent.yaml` or `./agent.yaml.new`)
 - `--update` — overwrite existing `agent.yaml` in place (default: writes `agent.yaml.new`)
 - `--dry-run` — print generated YAML to stdout without writing any file
+- `--provider <name>` — override codegen provider: `claude-sub`, `anthropic-api`, `codex`
 
 **Output path logic:**
 
@@ -317,7 +318,7 @@ Environment & resolution
 |---------|---------------|
 | CLI | `claude --version`, `claude auth status` — version, login state, account email, plan |
 | API | `ANTHROPIC_API_KEY` presence + live HTTP probe to `/v1/models`, `ANTHROPIC_BASE_URL` |
-| Environment | `AGENTSPEC_CLAUDE_AUTH_MODE`, `ANTHROPIC_MODEL` overrides, final resolved mode |
+| Environment | `AGENTSPEC_CODEGEN_PROVIDER`, `ANTHROPIC_MODEL` overrides, final resolved mode |
 
 Exit codes: `0` = at least one auth method is ready, `1` = no auth configured.
 

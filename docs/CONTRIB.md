@@ -23,7 +23,7 @@ pnpm test        # all tests must pass before you start
 
 | Command | What it does |
 |---------|--------------|
-| `pnpm build` | Build all packages (`sdk` → `adapter-claude` → `cli`, `sidecar`) |
+| `pnpm build` | Build all packages (`sdk` → `codegen` → `cli`, `sidecar`) |
 | `pnpm test` | Run all unit/integration tests |
 | `pnpm lint` | TypeScript type-check all packages |
 | `pnpm typecheck` | TypeScript type-check all packages (alias of lint) |
@@ -54,7 +54,7 @@ make docs-preview # preview built site locally
 ```bash
 pnpm --filter @agentspec/sdk          test
 pnpm --filter @agentspec/cli          test
-pnpm --filter @agentspec/adapter-claude test
+pnpm --filter @agentspec/codegen        test
 pnpm --filter @agentspec/sidecar      test
 
 # Sidecar — unit/integration + E2E (needs Docker)
@@ -92,7 +92,7 @@ When running the sidecar locally (or in tests):
 agentspec/
 ├── packages/
 │   ├── sdk/              @agentspec/sdk        — manifest schema, health checks, audit rules
-│   ├── adapter-claude/   @agentspec/adapter-claude — LLM code generation via Claude API
+│   ├── codegen/          @agentspec/codegen        — Provider-agnostic LLM code generation
 │   ├── cli/              @agentspec/cli        — agentspec CLI binary
 │   └── sidecar/          @agentspec/sidecar    — Fastify proxy + control plane
 ├── docs/                 VitePress docs site
@@ -100,11 +100,11 @@ agentspec/
 └── Makefile              Top-level convenience targets
 ```
 
-**Build order matters:** `sdk` must be built before `adapter-claude` and `cli`, because they depend on it as workspace packages.
+**Build order matters:** `sdk` must be built before `codegen` and `cli`, because they depend on it as workspace packages.
 
-## Adapter Build Note
+## Codegen Build Note
 
-`@agentspec/adapter-claude` build script copies skill Markdown files to `dist/skills/`:
+`@agentspec/codegen` build script copies skill Markdown files to `dist/skills/`:
 ```bash
 tsup && mkdir -p dist/skills && cp src/skills/*.md dist/skills/
 ```

@@ -1,28 +1,41 @@
-# Framework Adapters
+# Code Generation
 
 Generate runnable, framework-specific agent code from a single `agent.yaml` manifest.
 
 ## Overview
 
-An adapter reads your `agent.yaml` manifest and produces a complete, ready-to-run project for a target framework — source files, dependency lists, environment variable templates, and a README. You never write boilerplate by hand; the manifest is the source of truth.
+`@agentspec/codegen` reads your `agent.yaml` manifest, selects an LLM provider, and produces a complete, ready-to-run project — source files, dependencies, environment templates, and a README. You never write boilerplate by hand; the manifest is the source of truth.
 
 ---
 
-## 1. How Generation Works
+## 1. Quick Start
 
-AgentSpec uses an **agentic generation** approach: your manifest JSON is sent to Claude together with a framework-specific *skill* file. Claude reasons over every manifest field and returns a complete file map as structured JSON.
+```bash
+# Generate a LangGraph agent from your manifest
+agentspec generate agent.yaml --framework langgraph
+
+# Output lands in ./generated/ by default
+cd generated && pip install -r requirements.txt && python server.py
+```
+
+No configuration needed if you have the Claude CLI installed and logged in. AgentSpec auto-detects your auth.
+
+---
+
+## 2. How It Works
 
 ```
 agent.yaml
     │
     ▼
 ┌─────────────────────────────────┐
-│  @agentspec/adapter-claude      │
+│  @agentspec/codegen             │
 │                                 │
-│  resolveAuth()                  │◄── CLI login or ANTHROPIC_API_KEY
+│  resolveProvider()              │◄── Claude subscription / API key / Codex
 │  loadSkill('langgraph')         │◄── src/skills/langgraph.md
 │  buildContext(manifest)         │
-│  claude (subscription or API)   │
+│  provider.stream(system, user)  │
+│  extractGeneratedAgent(result)  │
 └─────────────────────────────────┘
     │
     ▼
@@ -32,38 +45,126 @@ agent.yaml
 agentspec generate --output ./generated/
 ```
 
+**Step by step:**
+
+1. **Resolve provider** — auto-detects Claude subscription (CLI), Anthropic API key, or OpenAI Codex
+2. **Load skill** — reads a framework-specific Markdown guide (e.g., `langgraph.md`) that tells the LLM how to generate code
+3. **Build context** — serializes the manifest JSON + any context files into a prompt
+4. **Stream** — sends the prompt to the provider and streams back the response
+5. **Parse** — extracts the JSON file map from the LLM response and writes files to disk
+
 This approach covers **all manifest fields** without exhaustive TypeScript templates. When the schema evolves, the skill file captures it in plain Markdown, not code.
 
-### Authentication
+---
 
-AgentSpec supports two ways to connect to Claude — no configuration required in most cases:
+## 3. Providers
 
-| Method | How | Priority |
-|--------|-----|----------|
-| **Claude subscription** (Pro / Max) | `claude` CLI + `claude auth login` | First |
-| **Anthropic API key** | `ANTHROPIC_API_KEY` env var | Fallback |
+AgentSpec supports three codegen providers. Auto-detection tries them in order:
 
-When both are available, subscription is used first. See the [Claude Authentication guide](../guides/claude-auth) for full details, CI setup, and override options.
+| Provider | Env var needed | How it works |
+|----------|---------------|--------------|
+| **Claude subscription** | None — uses `claude` CLI | First priority. Free with Pro/Max plan. |
+| **Anthropic API** | `ANTHROPIC_API_KEY` | Direct API call. Pay per token. |
+| **OpenAI Codex** | `OPENAI_API_KEY` | Uses OpenAI's API. |
 
-### The skill file
+### Force a specific provider
 
-Each framework is a single Markdown file in `packages/adapter-claude/src/skills/`:
+```bash
+# Via CLI flag
+agentspec generate agent.yaml --framework langgraph --provider anthropic-api
+
+# Via env var
+export AGENTSPEC_CODEGEN_PROVIDER=claude-sub       # force subscription
+export AGENTSPEC_CODEGEN_PROVIDER=anthropic-api    # force API key
+export AGENTSPEC_CODEGEN_PROVIDER=codex            # use OpenAI Codex
+```
+
+### Check your auth status
+
+```bash
+agentspec claude-status
+```
+
+See the [Claude Authentication guide](../guides/claude-auth) for full details, CI setup, and overrides.
+
+---
+
+## 4. Available Frameworks
+
+| Framework | Language | Generated files | Status |
+|-----------|----------|-----------------|--------|
+| `langgraph` | Python | `agent.py`, `tools.py`, `guardrails.py`, `server.py`, `eval_runner.py`, `requirements.txt`, `.env.example`, `README.md` | Available |
+| `crewai` | Python | `crew.py`, `tools.py`, `guardrails.py`, `requirements.txt`, `.env.example`, `README.md` | Available |
+| `mastra` | TypeScript | `src/agent.ts`, `src/tools.ts`, `mastra.config.ts`, `package.json`, `.env.example`, `README.md` | Available |
+
+```bash
+# Pick your framework
+agentspec generate agent.yaml --framework langgraph
+agentspec generate agent.yaml --framework crewai
+agentspec generate agent.yaml --framework mastra
+
+# Preview without writing files
+agentspec generate agent.yaml --framework langgraph --dry-run
+
+# Custom output directory
+agentspec generate agent.yaml --framework langgraph --output ./my-agent/
+
+# Override model
+export ANTHROPIC_MODEL=claude-sonnet-4-6
+agentspec generate agent.yaml --framework langgraph
+```
+
+See the per-framework docs for generated file details:
+- [LangGraph](../adapters/langgraph.md)
+- [CrewAI](../adapters/crewai.md)
+- [Mastra](../adapters/mastra.md)
+
+---
+
+## 5. The Skill File
+
+Each framework is a single Markdown file in `packages/codegen/src/skills/`:
 
 ```
 src/skills/
 ├── langgraph.md   # Python LangGraph — complete field mapping guide
 ├── crewai.md      # Python CrewAI — crew.py, tools.py, guardrails.py
-└── mastra.md      # TypeScript Mastra — src/agent.ts, src/tools.ts
+├── mastra.md      # TypeScript Mastra — src/agent.ts, src/tools.ts
+├── helm.md        # Helm chart generation
+└── scan.md        # Source code scanning (used by agentspec scan)
 ```
 
-Adding a new framework means writing one `.md` file — not a new TypeScript package. The file describes the output format, field mappings, and code patterns in natural language that Claude follows precisely.
+Adding a new framework means writing one `.md` file — not a new TypeScript package. The file describes:
 
-### The GeneratedAgent output
+- **Output format** — the exact JSON shape the LLM must return
+- **File map** — which files to generate and under what conditions
+- **Manifest-to-code mappings** — tables mapping `agent.yaml` fields to framework-specific code patterns
+- **Reference syntax resolution** — how to handle `$env:`, `$secret:`, `$file:`, `$func:` in the generated code
+- **Quality checklist** — invariants the LLM must verify before returning output
 
-All adapters, agentic or static, return the same `GeneratedAgent` shape from `@agentspec/sdk`:
+### Add a new framework
+
+```bash
+# 1. Create the skill
+touch packages/codegen/src/skills/autogen.md
+
+# 2. Rebuild to copy it to dist/
+pnpm --filter @agentspec/codegen build
+
+# 3. Use it immediately
+agentspec generate agent.yaml --framework autogen
+```
+
+See `packages/codegen/src/skills/langgraph.md` for a comprehensive reference implementation.
+
+---
+
+## 6. The GeneratedAgent Output
+
+All generation returns the same `GeneratedAgent` shape from `@agentspec/sdk`:
 
 ```typescript
-export interface GeneratedAgent {
+interface GeneratedAgent {
   framework: string                 // which framework produced this
   files: Record<string, string>    // filename → file contents
   installCommands: string[]        // ordered setup commands
@@ -76,67 +177,51 @@ export interface GeneratedAgent {
 
 ---
 
-## 2. Available Frameworks
+## 7. Programmatic Usage
 
-| Framework | Language | Generated files | Status |
-|-----------|----------|-----------------|--------|
-| `langgraph` | Python | `agent.py`, `tools.py`, `guardrails.py`, `server.py`, `eval_runner.py`, `requirements.txt`, `.env.example`, `README.md` | Available |
-| `crewai` | Python | `crew.py`, `tools.py`, `guardrails.py`, `requirements.txt`, `.env.example`, `README.md` | Available |
-| `mastra` | TypeScript | `src/agent.ts`, `src/tools.ts`, `mastra.config.ts`, `package.json`, `.env.example`, `README.md` | Available |
+Use `@agentspec/codegen` directly from TypeScript:
 
-Generate with any of them:
+```typescript
+import { generateCode, resolveProvider } from '@agentspec/codegen'
+import { loadManifest } from '@agentspec/sdk'
 
-```bash
-# Option A — Claude subscription (no API key needed)
-claude auth login
-agentspec generate agent.yaml --framework langgraph --output ./generated/
+const { manifest } = loadManifest('./agent.yaml')
+const provider = resolveProvider()          // auto-detect
 
-# Option B — Anthropic API key
-export ANTHROPIC_API_KEY=sk-ant-...
-agentspec generate agent.yaml --framework langgraph --output ./generated/
+const result = await generateCode(manifest, {
+  framework: 'langgraph',
+  provider,
+  onChunk: (chunk) => {
+    if (chunk.type === 'delta') {
+      process.stdout.write(chunk.text)      // stream progress
+    }
+  },
+})
 
-# Optional overrides (both modes)
-# export ANTHROPIC_MODEL=claude-sonnet-4-6          # default: claude-opus-4-6
-# export AGENTSPEC_CLAUDE_AUTH_MODE=cli             # force subscription
-# export AGENTSPEC_CLAUDE_AUTH_MODE=api             # force API key
+console.log(Object.keys(result.files))      // ['agent.py', 'tools.py', ...]
 ```
 
-See the per-framework docs for generated file details:
-- [LangGraph](../adapters/langgraph.md)
-- [CrewAI](../adapters/crewai.md)
-- [Mastra](../adapters/mastra.md)
+### Custom provider
+
+```typescript
+import { AnthropicApiProvider } from '@agentspec/codegen'
+
+const provider = new AnthropicApiProvider(
+  process.env.ANTHROPIC_API_KEY!,
+  process.env.ANTHROPIC_BASE_URL,           // optional proxy
+)
+
+const result = await generateCode(manifest, {
+  framework: 'crewai',
+  provider,
+})
+```
 
 ---
 
-## 3. Adding a New Framework
+## 8. Static Adapters (SDK)
 
-To add support for a new target framework, write a skill file:
-
-```bash
-# Create the skill
-touch packages/adapter-claude/src/skills/autogen.md
-
-# Rebuild to copy it to dist/
-pnpm --filter @agentspec/adapter-claude build
-
-# Use it immediately
-agentspec generate agent.yaml --framework autogen
-```
-
-A skill file describes:
-- **Output format** — the exact JSON shape Claude must return (files map + installCommands + envVars)
-- **File map** — which files to generate and under what conditions
-- **Manifest→code mappings** — tables mapping `agent.yaml` fields to framework-specific code patterns
-- **Reference syntax resolution** — how to handle `$env:`, `$secret:`, `$file:`, `$func:` in the generated code
-- **Quality checklist** — invariants Claude must verify before returning output
-
-See `packages/adapter-claude/src/skills/langgraph.md` for a comprehensive reference implementation.
-
----
-
-## 4. SDK FrameworkAdapter Interface
-
-The `FrameworkAdapter` interface in `@agentspec/sdk` remains available for authors who want to write deterministic, static adapters:
+The `FrameworkAdapter` interface in `@agentspec/sdk` is available for deterministic, offline adapters:
 
 ```typescript
 import { registerAdapter, type FrameworkAdapter } from '@agentspec/sdk'
@@ -144,13 +229,10 @@ import { registerAdapter, type FrameworkAdapter } from '@agentspec/sdk'
 const myAdapter: FrameworkAdapter = {
   framework: 'my-framework',
   version: '0.1.0',
-  generate(manifest, options = {}) {
+  generate(manifest) {
     return {
       framework: 'my-framework',
-      files: {
-        'agent.py': generateAgentPy(manifest),
-        'requirements.txt': generateRequirementsTxt(manifest),
-      },
+      files: { 'agent.py': generateAgentPy(manifest) },
       installCommands: ['pip install -r requirements.txt'],
       envVars: manifest.spec.requires?.envVars ?? [],
       readme: '...',
@@ -166,19 +248,9 @@ Static adapters are useful for:
 - Offline environments
 - Narrow/well-defined manifest subsets
 
-The CLI uses `@agentspec/adapter-claude` directly and does not route through the registry. To use a custom static adapter programmatically:
-
-```typescript
-import '@agentspec/adapter-my-framework'
-import { loadManifest, generateAdapter } from '@agentspec/sdk'
-
-const { manifest } = loadManifest('./agent.yaml')
-const result = generateAdapter(manifest, 'my-framework')
-```
-
 ---
 
-## 5. Field Mapping Reference
+## 9. Field Mapping Reference
 
 Every manifest field maps to a concept in generated code. Exact class names vary by framework; skill files contain the full per-framework tables.
 

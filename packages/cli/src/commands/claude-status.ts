@@ -1,6 +1,6 @@
 import type { Command } from 'commander'
 import chalk from 'chalk'
-import { probeClaudeAuth, type ClaudeProbeReport } from '@agentspec/adapter-claude'
+import { probeClaudeAuth, type ClaudeProbeReport } from '@agentspec/codegen'
 import { printHeader } from '../utils/output.js'
 
 // ── Formatters ────────────────────────────────────────────────────────────────

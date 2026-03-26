@@ -61,7 +61,7 @@ jobs:
       - name: Update package versions
         run: |
           NEW_VER="${{ steps.semver.outputs.new }}"
-          for pkg in packages/sdk packages/mcp-server packages/adapter-claude packages/cli; do
+          for pkg in packages/sdk packages/mcp-server packages/codegen packages/adapter-claude packages/cli; do
             (cd "$pkg" && npm version "$NEW_VER" --no-git-tag-version)
           done
 
@@ -77,6 +77,7 @@ jobs:
           NEW_VER="${{ steps.semver.outputs.new }}"
           git add packages/sdk/package.json \
                   packages/mcp-server/package.json \
+                  packages/codegen/package.json \
                   packages/adapter-claude/package.json \
                   packages/cli/package.json \
                   packages/operator/helm/agentspec-operator/Chart.yaml
@@ -105,7 +106,7 @@ jobs:
             echo '```bash'
             echo "npm install @agentspec/sdk@${NEW_VER}"
             echo "npm install @agentspec/mcp@${NEW_VER}"
-            echo "npm install @agentspec/adapter-claude@${NEW_VER}"
+            echo "npm install @agentspec/codegen@${NEW_VER}"
             echo "npm install -g @agentspec/cli@${NEW_VER}"
             echo '```'
           } > /tmp/release-notes.md

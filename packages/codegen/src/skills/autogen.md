@@ -65,7 +65,7 @@ model_client = OpenAIChatCompletionClient(
 from autogen_ext.models.anthropic import AnthropicChatCompletionClient
 
 model_client = AnthropicChatCompletionClient(
-    model="claude-opus-4-6",
+    model="claude-sonnet-4-6",
     api_key=os.environ.get("ANTHROPIC_API_KEY"),
 )
 ```

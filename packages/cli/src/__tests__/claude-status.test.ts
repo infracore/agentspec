@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import type { ClaudeProbeReport } from '@agentspec/adapter-claude'
+import type { ClaudeProbeReport } from '@agentspec/codegen'
 
-// ── Mock @agentspec/adapter-claude before any imports ─────────────────────────
+// ── Mock @agentspec/codegen before any imports ────────────────────────────────
 
 const mockProbeClaudeAuth = vi.fn()
 
-vi.mock('@agentspec/adapter-claude', () => ({
+vi.mock('@agentspec/codegen', () => ({
   probeClaudeAuth: mockProbeClaudeAuth,
 }))
 

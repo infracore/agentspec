@@ -30,7 +30,7 @@ import { extname, join, resolve } from 'node:path'
 import type { Command } from 'commander'
 import * as jsYaml from 'js-yaml'
 import { spinner } from '../utils/spinner.js'
-import { generateWithClaude, repairYaml, resolveAuth, type AuthResolution } from '@agentspec/adapter-claude'
+import { generateCode, repairYaml, resolveProvider, type CodegenProvider } from '@agentspec/codegen'
 import { ManifestSchema } from '@agentspec/sdk'
 import { buildManifestFromDetection, type ScanDetection } from './scan-builder.js'
 
@@ -290,39 +290,36 @@ export function registerScanCommand(program: Command): void {
     .option('--out <path>', 'Explicit output path')
     .option('--update', 'Overwrite existing agent.yaml in place')
     .option('--dry-run', 'Print generated YAML to stdout without writing')
-    .action(async (opts: { dir: string; out?: string; update?: boolean; dryRun?: boolean }) => {
+    .option('--provider <name>', 'Override codegen provider: claude-sub, anthropic-api, codex')
+    .action(async (opts: { dir: string; out?: string; update?: boolean; dryRun?: boolean; provider?: string }) => {
       const s = spinner()
-      s.start('Checking auth…')
+      s.start('Checking provider…')
 
-      // Resolve auth once and pass into generateWithClaude to avoid a redundant
-      // subprocess call inside the adapter (PERF-01).
-      let auth: AuthResolution | undefined
-      let authLabel: string
+      let provider: CodegenProvider
       try {
-        auth = resolveAuth()
-        authLabel = auth.mode === 'cli' ? 'Claude (subscription)' : 'Claude (API)'
+        provider = resolveProvider(opts.provider)
       } catch (err) {
-        s.stop('Auth failed')
-        console.error(`Claude auth failed: ${(err as Error).message}`)
+        s.stop('Provider unavailable')
+        console.error(`Codegen provider unavailable: ${(err as Error).message}`)
         process.exit(1)
       }
 
       const srcDir = resolve(opts.dir)
       const sourceFiles = collectAndValidateSourceFiles(srcDir)
 
-      s.message(`Analysing source code with ${authLabel}…`)
+      s.message(`Analysing source code with ${provider.name}…`)
 
-      // Phase 1: detect (Claude) — returns raw facts as detection.json
+      // Phase 1: detect (LLM) — returns raw facts as detection.json
       let rawResult: unknown
       try {
-        rawResult = await generateWithClaude(
+        rawResult = await generateCode(
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           {} as any, // empty manifest — the scan skill detects from source
           {
             framework: 'scan',
             contextFiles: sourceFiles.map(f => f.path),
             manifestDir: srcDir,
-            auth: auth!,
+            provider,
           },
         )
       } catch (err) {
@@ -352,7 +349,7 @@ export function registerScanCommand(program: Command): void {
           `Fixing ${validation.errorCount} schema error(s) — attempt ${attempt}/${MAX_REPAIR_ITERATIONS}…`,
         )
         try {
-          agentYaml = await repairYaml(agentYaml, validation.errors)
+          agentYaml = await repairYaml(provider, agentYaml, validation.errors)
           validation = validateManifestYaml(agentYaml)
         } catch (err) {
           s.stop('Failed')

@@ -75,13 +75,30 @@ jobs:
           cd packages/mcp-server
           npm publish --access public --provenance
 
-      - name: Resolve workspace deps for adapter-claude
+      - name: Resolve workspace deps for codegen
         run: |
           SDK_VER=$(node -p "require('./packages/sdk/package.json').version")
           node -e "
             const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('./packages/codegen/package.json'));
+            pkg.dependencies['@agentspec/sdk'] = pkg.dependencies['@agentspec/sdk'].replace('workspace:*', '$SDK_VER');
+            fs.writeFileSync('./packages/codegen/package.json', JSON.stringify(pkg, null, 2));
+          "
+
+      - name: Publish @agentspec/codegen
+        run: |
+          cd packages/codegen
+          npm publish --access public --provenance
+
+      - name: Resolve workspace deps for adapter-claude
+        run: |
+          SDK_VER=$(node -p "require('./packages/sdk/package.json').version")
+          CODEGEN_VER=$(node -p "require('./packages/codegen/package.json').version")
+          node -e "
+            const fs = require('fs');
             const pkg = JSON.parse(fs.readFileSync('./packages/adapter-claude/package.json'));
             pkg.dependencies['@agentspec/sdk'] = pkg.dependencies['@agentspec/sdk'].replace('workspace:*', '$SDK_VER');
+            pkg.dependencies['@agentspec/codegen'] = pkg.dependencies['@agentspec/codegen'].replace('workspace:*', '$CODEGEN_VER');
             fs.writeFileSync('./packages/adapter-claude/package.json', JSON.stringify(pkg, null, 2));
           "
 
@@ -93,12 +110,12 @@ jobs:
       - name: Resolve workspace deps for cli
         run: |
           SDK_VER=$(node -p "require('./packages/sdk/package.json').version")
-          ADAPTER_VER=$(node -p "require('./packages/adapter-claude/package.json').version")
+          CODEGEN_VER=$(node -p "require('./packages/codegen/package.json').version")
           node -e "
             const fs = require('fs');
             const pkg = JSON.parse(fs.readFileSync('./packages/cli/package.json'));
             pkg.dependencies['@agentspec/sdk'] = pkg.dependencies['@agentspec/sdk'].replace('workspace:*', '$SDK_VER');
-            pkg.dependencies['@agentspec/adapter-claude'] = pkg.dependencies['@agentspec/adapter-claude'].replace('workspace:*', '$ADAPTER_VER');
+            pkg.dependencies['@agentspec/codegen'] = pkg.dependencies['@agentspec/codegen'].replace('workspace:*', '$CODEGEN_VER');
             fs.writeFileSync('./packages/cli/package.json', JSON.stringify(pkg, null, 2));
           "
 
@@ -116,5 +133,6 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- \`@agentspec/sdk@${VERSION}\`" >> $GITHUB_STEP_SUMMARY
           echo "- \`@agentspec/mcp@${VERSION}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- \`@agentspec/adapter-claude@${VERSION}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`@agentspec/codegen@${VERSION}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`@agentspec/adapter-claude@${VERSION}\` (deprecated shim)" >> $GITHUB_STEP_SUMMARY
           echo "- \`@agentspec/cli@${VERSION}\`" >> $GITHUB_STEP_SUMMARY

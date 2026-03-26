@@ -4,7 +4,7 @@
  * Tests cover:
  *   - collectSourceFiles(): file collection, size cap, file count cap, path traversal
  *   - resolveOutputPath(): output path logic (new / existing / --update / --out)
- *   - CLI integration: generateWithClaude called with 'scan' skill, --dry-run, --update
+ *   - CLI integration: generateCode called with 'scan' skill, --dry-run, --update
  */
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
@@ -18,8 +18,8 @@ import { collectSourceFiles, resolveOutputPath } from '../commands/scan.js'
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
-vi.mock('@agentspec/adapter-claude', () => ({
-  generateWithClaude: vi.fn().mockResolvedValue({
+vi.mock('@agentspec/codegen', () => ({
+  generateCode: vi.fn().mockResolvedValue({
     files: {
       // Minimal ScanDetection JSON — builder converts this to valid YAML
       'detection.json': '{"name":"my-agent","description":"Test agent","modelProvider":"openai","modelId":"gpt-4o","modelApiKeyEnv":"OPENAI_API_KEY","envVars":["OPENAI_API_KEY"]}',
@@ -29,7 +29,7 @@ vi.mock('@agentspec/adapter-claude', () => ({
   }),
   repairYaml: vi.fn().mockResolvedValue(''),
   listFrameworks: vi.fn(() => ['langgraph', 'crewai', 'mastra']),
-  resolveAuth: vi.fn(() => ({ mode: 'api', apiKey: 'sk-ant-test' })),
+  resolveProvider: vi.fn(() => ({ name: 'anthropic-api', stream: vi.fn() })),
 }))
 
 vi.mock('@agentspec/sdk', async (importOriginal) => {
@@ -256,14 +256,14 @@ describe('scan — CLI integration', () => {
     delete process.env['ANTHROPIC_API_KEY']
   })
 
-  it('calls generateWithClaude with skill "scan"', async () => {
-    const { generateWithClaude } = await import('@agentspec/adapter-claude')
-    vi.mocked(generateWithClaude).mockClear()
+  it('calls generateCode with skill "scan"', async () => {
+    const { generateCode } = await import('@agentspec/codegen')
+    vi.mocked(generateCode).mockClear()
 
     await runScan(srcDir)
 
-    expect(vi.mocked(generateWithClaude)).toHaveBeenCalledOnce()
-    const [, opts] = vi.mocked(generateWithClaude).mock.calls[0]
+    expect(vi.mocked(generateCode)).toHaveBeenCalledOnce()
+    const [, opts] = vi.mocked(generateCode).mock.calls[0]
     expect(opts).toMatchObject({ framework: 'scan' })
   })
 
@@ -301,11 +301,11 @@ describe('scan — CLI integration', () => {
     expect(output).toContain('agentspec')
   })
 
-  it('generateWithClaude throwing → exits 1', async () => {
-    // Auth errors (no key, no CLI) bubble up from resolveAuth inside generateWithClaude.
+  it('generateCode throwing → exits 1', async () => {
+    // Auth errors (no key, no CLI) bubble up from resolveAuth inside generateCode.
     // This tests that the scan command catches and exits 1 on any generate failure.
-    const { generateWithClaude } = await import('@agentspec/adapter-claude')
-    vi.mocked(generateWithClaude).mockRejectedValueOnce(new Error('No Claude authentication found'))
+    const { generateCode } = await import('@agentspec/codegen')
+    vi.mocked(generateCode).mockRejectedValueOnce(new Error('No Claude authentication found'))
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((_code?: number): never => {
       throw new Error(`process.exit(${_code})`)
     }) as unknown as typeof process.exit)

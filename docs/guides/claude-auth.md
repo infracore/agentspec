@@ -147,7 +147,7 @@ The spinner shows:
 
 ## Resolution order (auto mode)
 
-When `AGENTSPEC_CLAUDE_AUTH_MODE` is not set, AgentSpec resolves auth in this order:
+When `AGENTSPEC_CODEGEN_PROVIDER` is not set, AgentSpec resolves auth in this order:
 
 ```
 1. Claude CLI installed + logged in?  →  use subscription
@@ -163,10 +163,13 @@ This means **subscription always wins when available**. If you have both, the AP
 
 ```bash
 # Always use subscription (fails fast if not logged in)
-export AGENTSPEC_CLAUDE_AUTH_MODE=cli
+export AGENTSPEC_CODEGEN_PROVIDER=claude-sub
 
 # Always use API key (skips CLI check entirely)
-export AGENTSPEC_CLAUDE_AUTH_MODE=api
+export AGENTSPEC_CODEGEN_PROVIDER=anthropic-api
+
+# Use OpenAI Codex
+export AGENTSPEC_CODEGEN_PROVIDER=codex
 ```
 
 Useful for CI where you want explicit control and no ambiguity.
@@ -193,7 +196,7 @@ Route API requests through a proxy:
 export ANTHROPIC_BASE_URL=https://my-proxy.example.com
 ```
 
-Only applies when `AGENTSPEC_CLAUDE_AUTH_MODE=api` or when auto-resolved to API mode.
+Only applies when `AGENTSPEC_CODEGEN_PROVIDER=anthropic-api` or when auto-resolved to API mode.
 
 ---
 
@@ -205,14 +208,14 @@ In CI there is no interactive login, so API key mode is the right choice:
 # GitHub Actions
 env:
   ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-  AGENTSPEC_CLAUDE_AUTH_MODE: api   # explicit — skip any CLI check
+  AGENTSPEC_CODEGEN_PROVIDER: anthropic-api   # explicit — skip any CLI check
 ```
 
 ```yaml
 # GitLab CI
 variables:
   ANTHROPIC_API_KEY: $ANTHROPIC_API_KEY
-  AGENTSPEC_CLAUDE_AUTH_MODE: api
+  AGENTSPEC_CODEGEN_PROVIDER: anthropic-api
 ```
 
 ---
@@ -222,8 +225,8 @@ variables:
 | Error | Cause | Fix |
 |-------|-------|-----|
 | `No Claude authentication found` | Neither CLI nor API key available | Install Claude CLI and log in, or set `ANTHROPIC_API_KEY` |
-| `AGENTSPEC_CLAUDE_AUTH_MODE=cli but claude is not authenticated` | Forced CLI mode, not logged in | Run `claude auth login` |
-| `AGENTSPEC_CLAUDE_AUTH_MODE=api but ANTHROPIC_API_KEY is not set` | Forced API mode, no key | Set `ANTHROPIC_API_KEY` |
+| `AGENTSPEC_CODEGEN_PROVIDER=claude-sub but claude is not authenticated` | Forced CLI mode, not logged in | Run `claude auth login` |
+| `AGENTSPEC_CODEGEN_PROVIDER=anthropic-api but ANTHROPIC_API_KEY is not set` | Forced API mode, no key | Set `ANTHROPIC_API_KEY` |
 | `Claude CLI timed out after 300s` | Generation too large for default timeout | Use `--framework` with a smaller manifest, or switch to API mode |
 | `Claude CLI is not authenticated` | CLI installed but session expired | Run `claude auth login` again |
 
