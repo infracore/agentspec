@@ -157,7 +157,7 @@ describe('AgentSpecReporter — push mode', () => {
     reporter.stopPushMode()
   })
 
-  it('5. body contains { health, gap } with correct agentName', async () => {
+  it('5. body contains { health, gap, usage } with correct agentName', async () => {
     const { AgentSpecReporter } = await import('../agent/reporter.js')
     const reporter = new AgentSpecReporter(testManifest)
 
@@ -170,9 +170,10 @@ describe('AgentSpecReporter — push mode', () => {
     await vi.advanceTimersByTimeAsync(500)
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
-    const body = JSON.parse(init.body as string) as { health: HealthReport; gap: AuditReport }
+    const body = JSON.parse(init.body as string) as { health: HealthReport; gap: AuditReport; usage: unknown }
     expect(body.health.agentName).toBe('push-test-agent')
     expect(body.gap.agentName).toBe('push-test-agent')
+    expect(body).toHaveProperty('usage')
     reporter.stopPushMode()
   })
 
@@ -320,5 +321,100 @@ describe('AgentSpecReporter — push mode', () => {
     reporter.stopPushMode()
 
     expect(reporter.isPushModeActive()).toBe(false)
+  })
+
+  // ── Token usage in heartbeat ───────────────────────────────────────────────
+
+  it('13. heartbeat payload includes usage field', async () => {
+    const { AgentSpecReporter } = await import('../agent/reporter.js')
+    const reporter = new AgentSpecReporter(testManifest)
+
+    reporter.usage.record('openai/gpt-4o', 100, 50)
+
+    reporter.startPushMode({
+      controlPlaneUrl: 'https://cp.example.com',
+      apiKey: 'test-key-abc',
+      intervalSeconds: 30,
+    })
+
+    await vi.advanceTimersByTimeAsync(500)
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    const body = JSON.parse(init.body as string)
+    expect(body).toHaveProperty('usage')
+    expect(body.usage.totalTokens).toBe(150)
+    expect(body.usage.totalCalls).toBe(1)
+    expect(body.usage.models).toHaveLength(1)
+    expect(body.usage.models[0].modelId).toBe('openai/gpt-4o')
+    reporter.stopPushMode()
+  })
+
+  it('14. heartbeat includes empty usage when no recordUsage() calls', async () => {
+    const { AgentSpecReporter } = await import('../agent/reporter.js')
+    const reporter = new AgentSpecReporter(testManifest)
+
+    reporter.startPushMode({
+      controlPlaneUrl: 'https://cp.example.com',
+      apiKey: 'test-key-abc',
+      intervalSeconds: 30,
+    })
+
+    await vi.advanceTimersByTimeAsync(500)
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    const body = JSON.parse(init.body as string)
+    expect(body.usage).toEqual({
+      windowStartedAt: expect.any(String),
+      models: [],
+      totalTokens: 0,
+      totalCalls: 0,
+    })
+    reporter.stopPushMode()
+  })
+
+  it('15. usage ledger resets after heartbeat fires', async () => {
+    const { AgentSpecReporter } = await import('../agent/reporter.js')
+    const reporter = new AgentSpecReporter(testManifest)
+
+    reporter.usage.record('openai/gpt-4o', 100, 50)
+
+    reporter.startPushMode({
+      controlPlaneUrl: 'https://cp.example.com',
+      apiKey: 'test-key-abc',
+      intervalSeconds: 5,
+    })
+
+    // First heartbeat fires and drains the ledger
+    await vi.advanceTimersByTimeAsync(500)
+
+    // Record nothing between first and second heartbeat
+    await vi.advanceTimersByTimeAsync(5000)
+
+    // Second heartbeat should have empty usage
+    const [, init] = fetchMock.mock.calls[1] as [string, RequestInit]
+    const body = JSON.parse(init.body as string)
+    expect(body.usage.totalTokens).toBe(0)
+    expect(body.usage.totalCalls).toBe(0)
+    reporter.stopPushMode()
+  })
+
+  it('16. reporter.usage is a UsageLedger instance', async () => {
+    const { AgentSpecReporter } = await import('../agent/reporter.js')
+    const { UsageLedger } = await import('../agent/usage-ledger.js')
+    const reporter = new AgentSpecReporter(testManifest)
+
+    expect(reporter.usage).toBeInstanceOf(UsageLedger)
+  })
+
+  it('17. reporter.usage.record() accumulates correctly', async () => {
+    const { AgentSpecReporter } = await import('../agent/reporter.js')
+    const reporter = new AgentSpecReporter(testManifest)
+
+    reporter.usage.record('openai/gpt-4o', 100, 50)
+    reporter.usage.record('openai/gpt-4o', 200, 80)
+
+    const snap = reporter.usage.snapshot(false)
+    expect(snap.totalTokens).toBe(430)
+    expect(snap.totalCalls).toBe(2)
   })
 })

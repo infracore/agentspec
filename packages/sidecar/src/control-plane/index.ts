@@ -11,6 +11,7 @@ import { buildEvalRoutes } from './eval.js'
 import { buildGapRoutes } from './gap.js'
 import { buildEventsRoutes } from './events.js'
 import { buildProofRoutes, ProofStore } from './proof.js'
+import { buildUsageRoutes } from './usage.js'
 
 export interface ControlPlaneOptions {
   logger?: boolean
@@ -39,6 +40,7 @@ export async function buildControlPlaneApp(
   await buildGapRoutes(app, manifest, auditRing)
   await buildEventsRoutes(app, manifest, auditRing, { opaUrl: opts.opaUrl })
   await buildProofRoutes(app, opts.proofStore ?? new ProofStore())
+  await buildUsageRoutes(app, auditRing)
 
   return app
 }

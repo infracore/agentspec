@@ -225,3 +225,49 @@ async def test_heartbeat_rate_limit_returns_429(registered, monkeypatch):
 
     second = await ac.post("/api/v1/heartbeat", content=payload, headers=headers)
     assert second.status_code == 429
+
+
+# ── Token usage in heartbeat ────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_heartbeat_with_usage_stores_correctly(registered):
+    ac, _, agent_id, api_key = registered
+    usage = {
+        "windowStartedAt": "2026-03-31T12:00:00.000Z",
+        "models": [{"modelId": "openai/gpt-4o", "totalTokens": 500, "callCount": 3}],
+        "totalTokens": 500,
+        "totalCalls": 3,
+    }
+    resp = await ac.post(
+        "/api/v1/heartbeat",
+        content=json.dumps({"health": make_health(), "gap": make_gap(), "usage": usage}),
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+    )
+    assert resp.status_code == 204
+
+    # Verify stored via GET /agents/{name}/usage
+    usage_resp = await ac.get("/api/v1/agents/test-bedrock/usage", headers=ADMIN_HEADERS)
+    assert usage_resp.status_code == 200
+    data = usage_resp.json()
+    assert data["totalTokens"] == 500
+    assert data["totalCalls"] == 3
+    assert len(data["models"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_without_usage_succeeds(registered):
+    ac, _, agent_id, api_key = registered
+    resp = await ac.post(
+        "/api/v1/heartbeat",
+        content=json.dumps({"health": make_health(), "gap": make_gap()}),
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+    )
+    assert resp.status_code == 204
+
+    # GET /agents/{name}/usage returns empty usage
+    usage_resp = await ac.get("/api/v1/agents/test-bedrock/usage", headers=ADMIN_HEADERS)
+    assert usage_resp.status_code == 200
+    data = usage_resp.json()
+    assert data["totalTokens"] == 0
+    assert data["totalCalls"] == 0
+    assert data["models"] == []

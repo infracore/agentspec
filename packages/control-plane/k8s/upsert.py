@@ -19,7 +19,7 @@ PLURAL = "agentobservations"
 NAMESPACE = "agentspec-remote"
 
 
-def build_status_patch(health: dict[str, Any], gap: dict[str, Any]) -> dict[str, Any]:
+def build_status_patch(health: dict[str, Any], gap: dict[str, Any], usage: dict[str, Any] | None = None) -> dict[str, Any]:
     """
     Derive AgentObservation .status from heartbeat data.
 
@@ -49,13 +49,16 @@ def build_status_patch(health: dict[str, Any], gap: dict[str, Any]) -> dict[str,
     else:
         grade = "F"
 
-    return {
+    patch: dict[str, Any] = {
         "phase": phase,
         "grade": grade,
         "score": score,
         "health": health,
         "gap": gap,
     }
+    if usage is not None:
+        patch["usage"] = usage
+    return patch
 
 
 async def upsert_agent_observation(

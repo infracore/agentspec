@@ -64,6 +64,7 @@ from .guardrail_middleware import GuardrailMiddleware, PolicyViolationError
 from .model_instrumentation import instrument_call_model
 from .sidecar_client import SidecarClient
 from .tool_node import AgentSpecToolNode
+from .usage_ledger import UsageLedger
 
 __version__ = "0.1.0"
 
@@ -80,4 +81,5 @@ __all__ = [
     "ModelCallEvent",
     "GuardrailEvent",
     "MemoryWriteEvent",
+    "UsageLedger",
 ]

@@ -117,7 +117,7 @@ async def heartbeat(
     _check_rate_limit(agent_id)
 
     # 6. Derive phase / grade / score
-    status_patch = build_status_patch(data.health, data.gap)
+    status_patch = build_status_patch(data.health, data.gap, data.usage)
     now = datetime.now(timezone.utc)
 
     # 7. Persist heartbeat
@@ -127,6 +127,7 @@ async def heartbeat(
         health=data.health,
         gap=data.gap,
         proof=data.proof,
+        usage=data.usage,
     )
     session.add(hb)
 

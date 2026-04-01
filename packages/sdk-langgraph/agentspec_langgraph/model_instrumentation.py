@@ -28,6 +28,7 @@ from collections import deque
 from typing import Any, Callable, Optional
 
 from .events import ModelCallEvent
+from .usage_ledger import UsageLedger
 
 
 def instrument_call_model(
@@ -35,6 +36,7 @@ def instrument_call_model(
     reporter: Optional[Any] = None,
     model_id: str = "unknown/unknown",
     max_events: int = 10_000,
+    ledger: Optional[UsageLedger] = None,
 ) -> Callable[..., Any]:
     """
     Wrap a LangGraph call_model node function with AgentSpec instrumentation.
@@ -43,6 +45,7 @@ def instrument_call_model(
       - Times each LLM call
       - Extracts token usage from AIMessage.usage_metadata or response_metadata
       - Emits a ModelCallEvent to the reporter
+      - Records token usage in the UsageLedger (if provided)
 
     Parameters
     ----------
@@ -56,6 +59,9 @@ def instrument_call_model(
     max_events:
         Maximum number of call events to retain in memory (default: 10,000).
         Older events are dropped when the limit is reached.
+    ledger:
+        Optional UsageLedger for aggregating token counts across calls.
+        When provided, every model call accumulates into the ledger.
 
     Returns
     -------
@@ -85,6 +91,12 @@ def instrument_call_model(
                 reporter.record_model_call(event)
             except Exception:
                 pass  # Reporter errors never break the agent
+
+        if ledger is not None:
+            try:
+                ledger.record(model_id, prompt_tokens or 0, completion_tokens or 0)
+            except Exception:
+                pass  # Ledger errors never break the agent
 
         return result
 

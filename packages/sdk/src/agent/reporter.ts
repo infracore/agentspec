@@ -22,6 +22,7 @@ import { runAudit } from '../audit/index.js'
 import type { AgentSpecManifest } from '../schema/manifest.schema.js'
 import type { HealthReport } from '../health/index.js'
 import type { PushModeOptions } from './push.js'
+import { UsageLedger } from './usage-ledger.js'
 
 export interface ReporterOptions {
   /**
@@ -51,6 +52,9 @@ export class AgentSpecReporter {
   private refreshing = false
   private stopped = false
   private readonly registeredTools = new Set<string>()
+
+  /** In-process token usage accumulator. */
+  readonly usage = new UsageLedger()
 
   constructor(
     private readonly manifest: AgentSpecManifest,
@@ -172,14 +176,15 @@ export class AgentSpecReporter {
     try {
       const health = await this.getReport()
       const gap = runAudit(this.manifest)
+      const usage = this.usage.snapshot(true)
 
       // Build payload, cap at 64 KB by trimming checks
       const trimmedChecks = [...health.checks]
-      let body = JSON.stringify({ health, gap })
+      let body = JSON.stringify({ health, gap, usage })
       if (body.length > 65_536) {
         while (trimmedChecks.length > 0) {
           trimmedChecks.pop()
-          body = JSON.stringify({ health: { ...health, checks: trimmedChecks }, gap })
+          body = JSON.stringify({ health: { ...health, checks: trimmedChecks }, gap, usage })
           if (body.length <= 65_536) break
         }
       }

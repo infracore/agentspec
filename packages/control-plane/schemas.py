@@ -39,6 +39,7 @@ class HeartbeatRequest(BaseModel):
     health: dict[str, Any]
     gap: dict[str, Any]
     proof: list[dict[str, Any]] = Field(default_factory=list)
+    usage: Optional[dict[str, Any]] = None
 
 
 # ── Stored health report (GET /agents/{name}/health response) ─────────────────
@@ -92,6 +93,20 @@ class StoredProofRecord(BaseModel):
 class StoredProofRecords(BaseModel):
     """Proof records stored in a heartbeat row, with metadata."""
     records: list[StoredProofRecord] = Field(default_factory=list)
+    receivedAt: Optional[str] = None
+
+
+# ── Stored usage report (GET /agents/{name}/usage response) ─────────────────
+
+class StoredUsageReport(BaseModel):
+    """Schema for the usage snapshot stored in heartbeat rows.
+
+    Strips unknown fields (extra='ignore') — same pattern as StoredHealthReport.
+    """
+    windowStartedAt: Optional[str] = None
+    models: list[dict[str, Any]] = Field(default_factory=list)
+    totalTokens: int = 0
+    totalCalls: int = 0
     receivedAt: Optional[str] = None
 
 

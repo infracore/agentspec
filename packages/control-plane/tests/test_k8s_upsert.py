@@ -161,6 +161,24 @@ def test_build_status_patch_score_clamped_below_zero():
     assert patch["grade"] == "F"
 
 
+# ── Usage in status patch ────────────────────────────────────────────────────
+
+def test_build_status_patch_includes_usage_when_provided():
+    usage = {"totalTokens": 500, "totalCalls": 3, "models": [{"modelId": "openai/gpt-4o", "totalTokens": 500, "callCount": 3}]}
+    patch = build_status_patch(make_health("ready"), make_gap(80), usage=usage)
+    assert patch["usage"] == usage
+
+
+def test_build_status_patch_omits_usage_when_none():
+    patch = build_status_patch(make_health("ready"), make_gap(80), usage=None)
+    assert "usage" not in patch
+
+
+def test_build_status_patch_omits_usage_by_default():
+    patch = build_status_patch(make_health("ready"), make_gap(80))
+    assert "usage" not in patch
+
+
 @pytest.mark.asyncio
 async def test_upsert_idempotent_called_twice():
     mock_client = AsyncMock()

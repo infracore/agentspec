@@ -43,5 +43,6 @@ class Heartbeat(Base):
     health: Mapped[dict] = mapped_column(JSON, nullable=False)
     gap: Mapped[dict] = mapped_column(JSON, nullable=False)
     proof: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    usage: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     agent: Mapped[Agent] = relationship(back_populates="heartbeats")

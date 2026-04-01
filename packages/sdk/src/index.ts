@@ -106,6 +106,12 @@ export {
 
 export { type PushModeOptions } from './agent/push.js'
 
+export {
+  UsageLedger,
+  type UsageSnapshot,
+  type ModelUsageEntry,
+} from './agent/usage-ledger.js'
+
 export { agentSpecFastifyPlugin } from './agent/adapters/fastify.js'
 export { agentSpecExpressRouter } from './agent/adapters/express.js'
 

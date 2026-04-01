@@ -46,6 +46,10 @@ spec:
           type: string
           description: "Data source: agent-sdk (live) or manifest-static (fallback)"
           jsonPath: .status.source
+        - name: Tokens
+          type: integer
+          description: "Total tokens in last heartbeat window"
+          jsonPath: .status.usage.totalTokens
         - name: Checked
           type: date
           description: "Time of last successful probe"
@@ -133,6 +137,35 @@ spec:
                       type: integer
                     skipped:
                       type: integer
+                usage:
+                  type: object
+                  description: "Token usage from the last heartbeat window"
+                  properties:
+                    totalTokens:
+                      type: integer
+                      description: "Total tokens consumed in the last heartbeat window"
+                    totalCalls:
+                      type: integer
+                      description: "Total model calls in the last heartbeat window"
+                    models:
+                      type: array
+                      description: "Per-model token usage breakdown"
+                      items:
+                        type: object
+                        properties:
+                          modelId:
+                            type: string
+                            description: "Model identifier (e.g. openai/gpt-4o)"
+                          totalTokens:
+                            type: integer
+                            description: "Total tokens for this model"
+                          callCount:
+                            type: integer
+                            description: "Number of calls to this model"
+                    windowStartedAt:
+                      type: string
+                      format: date-time
+                      description: "Start of the usage aggregation window"
                 conditions:
                   type: array
                   description: "Standard Kubernetes conditions"

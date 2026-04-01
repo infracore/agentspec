@@ -1,6 +1,7 @@
 """
 Tests for GET /api/v1/agents, GET /api/v1/agents/{name}/health,
-GET /api/v1/agents/{name}/gap, and GET /api/v1/agents/{name}/proof.
+GET /api/v1/agents/{name}/gap, GET /api/v1/agents/{name}/proof,
+and GET /api/v1/agents/{name}/usage.
 All endpoints require X-Admin-Key authentication.
 """
 from __future__ import annotations
@@ -277,3 +278,74 @@ async def test_get_proof_strips_unknown_fields(registered):
     record = resp.json()["records"][0]
     assert "internal_secret" not in record
     assert record["ruleId"] == "SEC-LLM-06"
+
+
+# ── GET /agents/{name}/usage ────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_get_usage_unknown_agent_returns_404(client):
+    ac, _ = client
+    resp = await ac.get("/api/v1/agents/does-not-exist/usage", headers=ADMIN_HEADERS)
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_usage_no_heartbeat_yet_returns_404(client):
+    ac, _ = client
+    await ac.post(
+        "/api/v1/register",
+        json={"agentName": "silent-agent", "runtime": "local"},
+        headers=ADMIN_HEADERS,
+    )
+    resp = await ac.get("/api/v1/agents/silent-agent/usage", headers=ADMIN_HEADERS)
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_usage_returns_stored_usage(registered):
+    ac, mock_upsert, agent_id, api_key = registered
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    usage = {
+        "windowStartedAt": "2026-03-31T12:00:00.000Z",
+        "models": [{"modelId": "openai/gpt-4o", "totalTokens": 500, "callCount": 3}],
+        "totalTokens": 500,
+        "totalCalls": 3,
+    }
+    await ac.post(
+        "/api/v1/heartbeat",
+        content=json.dumps({"health": make_health(), "gap": make_gap(), "usage": usage}),
+        headers=headers,
+    )
+    resp = await ac.get("/api/v1/agents/test-bedrock/usage", headers=ADMIN_HEADERS)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["totalTokens"] == 500
+    assert data["totalCalls"] == 3
+    assert data["models"][0]["modelId"] == "openai/gpt-4o"
+    assert "receivedAt" in data
+
+
+@pytest.mark.asyncio
+async def test_get_usage_returns_empty_when_no_usage_in_heartbeat(registered):
+    """When heartbeat had no usage field, GET /usage returns zeroed-out defaults."""
+    ac, mock_upsert, agent_id, api_key = registered
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    await ac.post(
+        "/api/v1/heartbeat",
+        content=json.dumps({"health": make_health(), "gap": make_gap()}),
+        headers=headers,
+    )
+    resp = await ac.get("/api/v1/agents/test-bedrock/usage", headers=ADMIN_HEADERS)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["totalTokens"] == 0
+    assert data["totalCalls"] == 0
+    assert data["models"] == []
+    assert "receivedAt" in data
+
+
+@pytest.mark.asyncio
+async def test_get_usage_requires_auth(client):
+    ac, _ = client
+    resp = await ac.get("/api/v1/agents/some-agent/usage")
+    assert resp.status_code in (401, 403)

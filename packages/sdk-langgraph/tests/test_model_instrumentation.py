@@ -184,3 +184,56 @@ def test_handles_non_dict_return(reporter):
     result = call_model({"messages": []})
     assert result == "raw response"
     assert reporter.model_calls[0].token_count == 0
+
+
+def test_ledger_error_does_not_propagate(reporter):
+    """Ledger errors must not break the agent — same pattern as reporter errors."""
+    from unittest.mock import MagicMock
+    from agentspec_langgraph.usage_ledger import UsageLedger
+
+    broken_ledger = MagicMock(spec=UsageLedger)
+    broken_ledger.record.side_effect = RuntimeError("ledger boom")
+
+    def raw_call_model(state):
+        msg = MockAIMessage()
+        msg.usage_metadata = {"total_tokens": 100, "input_tokens": 60, "output_tokens": 40}
+        return {"messages": [msg]}
+
+    call_model = instrument_call_model(
+        raw_call_model, reporter=reporter, model_id="openai/gpt-4o", ledger=broken_ledger,
+    )
+    result = call_model({"messages": []})
+
+    # Function returns normally despite ledger error
+    assert "messages" in result
+    assert len(result["messages"]) == 1
+    # Reporter still recorded
+    assert len(reporter.model_calls) == 1
+    # Ledger was attempted
+    broken_ledger.record.assert_called_once()
+
+
+def test_ledger_accumulates_usage(reporter):
+    """When a UsageLedger is provided, instrument_call_model records usage into it."""
+    from agentspec_langgraph.usage_ledger import UsageLedger
+
+    ledger = UsageLedger()
+
+    def raw_call_model(state):
+        msg = MockAIMessage()
+        msg.usage_metadata = {"total_tokens": 342, "input_tokens": 200, "output_tokens": 142}
+        return {"messages": [msg]}
+
+    call_model = instrument_call_model(
+        raw_call_model,
+        reporter=reporter,
+        model_id="openai/gpt-4o",
+        ledger=ledger,
+    )
+    call_model({"messages": []})
+    call_model({"messages": []})
+
+    snap = ledger.snapshot(reset=False)
+    assert snap["totalTokens"] == 684
+    assert snap["totalCalls"] == 2
+    assert snap["models"][0]["modelId"] == "openai/gpt-4o"
