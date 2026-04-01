@@ -15,7 +15,7 @@ source of confusion when working with VS Code, MCP, and the CLI.
 | **When to use** | Local dev, or cluster agent via per-agent port-forward | K8s cluster with AgentSpec Operator deployed |
 | **URL target** | `http://localhost:4001` (direct or port-forwarded per agent) | Operator service URL (one URL for all agents) |
 | **Data freshness** | **Live** — computed fresh on each request | **Stored** — last heartbeat (up to `RATE_LIMIT_SECONDS` stale) |
-| **Endpoints** | `GET /gap`, `GET /proof`, `GET /health/ready`, `GET /explore` | `GET /api/v1/agents/{name}/gap`, `/proof`, `/health` |
+| **Endpoints** | `GET /gap`, `GET /proof`, `GET /health/ready`, `GET /explore`, `GET /usage` | `GET /api/v1/agents/{name}/gap`, `/proof`, `/health`, `/usage` |
 | **Auth** | None (port-forward is already a trust boundary) | `X-Admin-Key` header |
 | **VS Code config** | `agentspec.sidecarUrl` | `agentspec.cluster.controlPlaneUrl` + `agentspec.cluster.adminKey` |
 
@@ -53,6 +53,7 @@ All endpoints return **live** data computed at request time:
 - `GET /proof` — compliance proof records
 - `GET /health/ready` — live health checks
 - `GET /explore` — runtime capabilities
+- `GET /usage` — aggregated token usage from the audit ring
 
 ### VS Code configuration
 
@@ -116,6 +117,7 @@ All endpoints return **stored** data from the last heartbeat push:
 - `GET /api/v1/agents/{name}/gap` — last known gap report
 - `GET /api/v1/agents/{name}/proof` — proof records
 - `GET /api/v1/agents/{name}/health` — last health check result
+- `GET /api/v1/agents/{name}/usage` — last token usage snapshot
 
 ### VS Code configuration
 

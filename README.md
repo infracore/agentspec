@@ -28,6 +28,7 @@ agentspec generate agent.yaml --framework langgraph
 - [x] **Scan** an existing codebase and auto-generate the manifest
 - [x] **Evaluate** agent quality against JSONL datasets with CI pass/fail gates
 - [x] **Deploy** to Kubernetes — operator injects sidecar, exposes `/health/ready` and `/gap`
+- [x] **Track** token usage per model — in-process metering, no external infrastructure
 - [x] **Export** to A2A / AgentCard format
 - [ ] Visual dashboard for fleet-wide agent observability (coming soon)
 - [ ] Native OpenTelemetry trace export (coming soon)
@@ -39,7 +40,7 @@ agentspec generate agent.yaml --framework langgraph
 <img src="docs/graphics/agentspec-architecture.png" alt="AgentSpec Architecture" width="800" />
 
 - **`agent.yaml`** is the single source of truth — the SDK reads it at runtime, the CLI validates and audits it, the operator deploys it
-- **Sidecar** is injected automatically by the operator and exposes live `/health/ready`, `/gap`, and `/explore` endpoints without touching agent code
+- **Sidecar** is injected automatically by the operator and exposes live `/health/ready`, `/gap`, `/explore`, and `/usage` endpoints without touching agent code
 - **CLI** wraps the SDK for local development — validate, audit, generate, scan, evaluate
 - **MCP Server** bridges the sidecar to Claude Code and VS Code for in-editor introspection
 
@@ -124,6 +125,13 @@ npm install @agentspec/sdk
   Violations (2)
     [high] SEC-LLM-10 — API keys use $secret, not $env
     [medium] MEM-04 — Vector store namespace isolated
+```
+
+**Token usage** (`kubectl get agentobservations`):
+```
+NAME               PHASE     GRADE  SCORE  TOKENS   CHECKED
+budget-assistant   Healthy   B      82     12,450   30s ago
+gymcoach           Healthy   A      95     3,200    15s ago
 ```
 
 ---

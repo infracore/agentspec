@@ -191,6 +191,79 @@ These categories only appear in runtime `HealthReport`s (not in CLI pre-flight o
 | `service` | `AgentSpecReporter` | TCP connectivity for `spec.requires.services` entries |
 | `model` | `AgentSpecReporter` | Provider API endpoint reachable (resolves `$env:` at runtime) |
 
+## Token Usage Tracking
+
+`AgentSpecReporter` includes a built-in `UsageLedger` that aggregates LLM token counts in-process. No external infrastructure required — token counts flow through the existing heartbeat push.
+
+### Recording usage
+
+After each LLM call, record the token counts:
+
+```typescript
+reporter.usage.record('openai/gpt-4o', promptTokens, completionTokens)
+```
+
+For LangGraph agents, `instrument_call_model` records automatically when a `ledger` is provided:
+
+```python
+from agentspec_langgraph import instrument_call_model, UsageLedger
+
+ledger = UsageLedger()
+call_model = instrument_call_model(
+    original_call_model,
+    reporter=reporter,
+    model_id="groq/llama-3.3-70b-versatile",
+    ledger=ledger,
+)
+```
+
+### How it flows
+
+```
+LLM response → UsageLedger.record() → heartbeat push → CRD status → VS Code
+                                       sidecar GET /usage ─────────→ VS Code
+```
+
+Each heartbeat ships a **window snapshot** (e.g., last 30s of usage), then resets the counters. The control plane stores each window with the heartbeat row.
+
+### Querying usage
+
+**Sidecar mode** (live, from audit ring):
+```
+GET /usage
+```
+
+**Operator mode** (stored, from last heartbeat):
+```
+GET /api/v1/agents/{name}/usage
+```
+
+Response:
+```json
+{
+  "windowStartedAt": "2026-03-31T12:00:00.000Z",
+  "models": [
+    { "modelId": "openai/gpt-4o", "totalTokens": 1250, "callCount": 8 }
+  ],
+  "totalTokens": 1250,
+  "totalCalls": 8
+}
+```
+
+### CRD visibility
+
+Token usage appears in the `AgentObservation` CRD status and in `kubectl` output:
+
+```bash
+kubectl get agentobservations
+# NAME          PHASE     GRADE  SCORE  TOKENS  CHECKED
+# gymcoach      Healthy   A      92     1250    2m ago
+```
+
+### VS Code
+
+The agent detail panel shows a **Token Usage** section with total tokens, call count, and a per-model breakdown table.
+
 ## Caching and Refresh
 
 `AgentSpecReporter` caches the last `HealthReport` to avoid hammering external APIs on every request to `/agentspec/health`.
