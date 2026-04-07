@@ -34,7 +34,7 @@ jobs:
       # Pin to feature-branch commit during testing. Will switch to
       # delimit-ai/delimit-action@v1 once v1.9.0 ships.
       - name: Delimit governance check
-        uses: delimit-ai/delimit-action@e39d384aa705c325917fbe34662941fda94d8b7e
+        uses: delimit-ai/delimit-action@1a19928543801504c4fe29a5cff24280d7da88c6
         with:
           spec: schemas/v1/agent.schema.json
           mode: advisory
