@@ -66,7 +66,7 @@ spec:
       serviceAccountName: {{ include "agentspec-operator.name" . }}-hook
       containers:
         - name: check
-          image: registry.k8s.io/kubectl:v1.31.0
+          image: bitnami/kubectl:latest
           imagePullPolicy: IfNotPresent
           command:
             - sh
