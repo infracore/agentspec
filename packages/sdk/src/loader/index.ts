@@ -55,7 +55,9 @@ export function loadManifest(
 
   let parsed: unknown
   try {
-    parsed = yaml.load(raw)
+    // Use JSON_SCHEMA to prevent !!js/function and other unsafe YAML types
+    // from executing code or extracting env vars when loading untrusted manifests.
+    parsed = yaml.load(raw, { schema: yaml.JSON_SCHEMA })
   } catch (err) {
     throw new Error(`Invalid YAML in ${absPath}\n  ${String(err)}`)
   }

@@ -100,8 +100,9 @@ export function parseCommaSeparatedHeader(
   value: string | string[] | undefined,
 ): string[] {
   if (!value) return []
-  const raw = Array.isArray(value) ? value[0] : value
-  if (!raw?.trim()) return []
+  // HTTP allows multiple header instances; join all values before splitting on commas
+  const raw = Array.isArray(value) ? value.join(',') : value
+  if (!raw.trim()) return []
   return raw
     .split(',')
     .map((s) => s.trim())

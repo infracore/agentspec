@@ -8,11 +8,13 @@
  * the check returns 'skip' rather than 'fail' (the env check will surface the
  * underlying problem).
  *
- * Security: link-local (169.254.x.x) and loopback (127.x.x.x, ::1) addresses
- * are always rejected to prevent unintentional SSRF in container deployments.
+ * Security: link-local (169.254.x.x), loopback (127.x.x.x, ::1), and RFC 1918 private
+ * address ranges (10.x, 172.16-31.x, 192.168.x) are always rejected to prevent
+ * unintentional SSRF in container deployments.
  */
 
 import type { HealthCheck } from '../index.js'
+import { isIP } from 'node:net'
 
 interface ServiceSpec {
   type: string
@@ -119,22 +121,49 @@ function parseConnectionUrl(connection: string): { host: string; port: number } 
  * Returns a rejection reason string if the host is a sensitive address,
  * or null if the host is acceptable for a TCP connectivity check.
  *
- * Rejects:
+ * Rejects (IP literals only — hostname strings are not matched by IP ranges):
  *  - IPv4 loopback (127.0.0.0/8)
  *  - IPv4 link-local (169.254.0.0/16) — AWS/GCP instance metadata
+ *  - IPv4 private ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) — RFC 1918
  *  - IPv6 loopback (::1)
  *  - IPv6 link-local (fe80::/10)
  *  - Unspecified address (0.0.0.0)
+ *
+ * Note: DNS-rebinding attacks (hostname → private IP) are not mitigated here because
+ * synchronous DNS resolution inside a health check would block the event loop and
+ * add significant latency.  The primary threat model is an operator-controlled
+ * manifest that directly references private IPs.
  */
 function classifyHost(host: string): string | null {
   // Normalize IPv6 bracket notation
   const h = host.replace(/^\[(.+)\]$/, '$1').toLowerCase()
 
-  if (h === '0.0.0.0') return 'unspecified address 0.0.0.0 is not a valid service host'
-  if (h === '::1' || h === 'localhost') return 'loopback address is not probed from service checks'
-  if (h.startsWith('127.')) return 'IPv4 loopback (127.x.x.x) is not probed from service checks'
-  if (h.startsWith('169.254.')) return 'link-local address (169.254.x.x) blocked to prevent instance-metadata SSRF'
-  if (h.startsWith('fe80:')) return 'IPv6 link-local (fe80::/10) blocked to prevent SSRF'
+  // Always block regardless of whether it looks like an IP or hostname
+  if (h === 'localhost') return 'loopback address is not probed from service checks'
+
+  // Determine whether the value is an IP literal. Hostname strings (e.g. "10.example.com")
+  // must NOT be matched against IP range prefixes — that would be a false positive.
+  const ipVersion = isIP(h) // 4, 6, or 0 (not an IP literal)
+
+  if (ipVersion === 4) {
+    if (h === '0.0.0.0') return 'unspecified address 0.0.0.0 is not a valid service host'
+    if (h.startsWith('127.')) return 'IPv4 loopback (127.x.x.x) is not probed from service checks'
+    if (h.startsWith('169.254.')) return 'link-local address (169.254.x.x) blocked to prevent instance-metadata SSRF'
+    // RFC 1918 private ranges
+    if (h.startsWith('10.')) return 'RFC 1918 private address (10.0.0.0/8) blocked to prevent internal SSRF'
+    if (h.startsWith('192.168.')) return 'RFC 1918 private address (192.168.0.0/16) blocked to prevent internal SSRF'
+    if (h.startsWith('172.')) {
+      const second = parseInt(h.split('.')[1] ?? '0', 10)
+      if (second >= 16 && second <= 31) {
+        return 'RFC 1918 private address (172.16.0.0/12) blocked to prevent internal SSRF'
+      }
+    }
+  }
+
+  if (ipVersion === 6) {
+    if (h === '::1') return 'loopback address is not probed from service checks'
+    if (h.startsWith('fe80:')) return 'IPv6 link-local (fe80::/10) blocked to prevent SSRF'
+  }
 
   return null
 }
