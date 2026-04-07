@@ -1,4 +1,49 @@
 {{- if and .Values.webhook.enabled .Values.webhook.certManager.enabled }}
+# ── Hook-scoped RBAC (created and deleted with the hook) ──────────────────────
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "agentspec-operator.name" . }}-hook
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded,hook-failed
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "agentspec-operator.name" . }}-hook
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded,hook-failed
+rules:
+  - apiGroups: [apiextensions.k8s.io]
+    resources: [customresourcedefinitions]
+    verbs: [get]
+  - apiGroups: [apps]
+    resources: [deployments]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "agentspec-operator.name" . }}-hook
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded,hook-failed
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "agentspec-operator.name" . }}-hook
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "agentspec-operator.name" . }}-hook
+---
+# ── Pre-install check: cert-manager must be installed ─────────────────────────
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -18,7 +63,7 @@ spec:
         app.kubernetes.io/name: cert-manager-check
     spec:
       restartPolicy: Never
-      serviceAccountName: {{ .Values.rbac.serviceAccountName }}
+      serviceAccountName: {{ include "agentspec-operator.name" . }}-hook
       containers:
         - name: check
           image: registry.k8s.io/kubectl:v1.31.0
