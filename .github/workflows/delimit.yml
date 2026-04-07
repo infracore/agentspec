@@ -15,6 +15,9 @@ name: Delimit governance
 # Advisory mode by default — never fails CI. Posts a single PR comment.
 # No API keys, no external services, runs in well under 30 seconds.
 #
+# Pinned to a specific commit of delimit-action while v1.9.0 is being
+# re-released through the full deploy gates. Will switch to
+# delimit-ai/delimit-action@v1 once that re-release lands.
 
 on:
   pull_request:
@@ -48,7 +51,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Delimit governance check
-        uses: delimit-ai/delimit-action@v1
+        uses: delimit-ai/delimit-action@1a19928543801504c4fe29a5cff24280d7da88c6
         with:
           spec: schemas/v1/agent.schema.json
           mode: advisory
