@@ -56,6 +56,12 @@ jobs:
           docker tag agentspec-sidecar:ci agentspec/sidecar:local
           kind load docker-image agentspec/sidecar:local --name agentspec
 
+      # ── Pre-load Helm hook image ──────────────────────────────────────────────
+      - name: Pre-load check-cert-manager image into kind
+        run: |
+          docker pull bitnami/kubectl:1.31
+          kind load docker-image bitnami/kubectl:1.31 --name agentspec
+
       # ── Helm install operator ─────────────────────────────────────────────────
       - name: Helm install agentspec-operator
         run: |
