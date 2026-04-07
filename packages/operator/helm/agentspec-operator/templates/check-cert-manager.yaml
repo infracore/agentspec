@@ -21,7 +21,8 @@ spec:
       serviceAccountName: {{ .Values.rbac.serviceAccountName }}
       containers:
         - name: check
-          image: bitnami/kubectl:latest
+          image: bitnami/kubectl:1.31
+          imagePullPolicy: IfNotPresent
           command:
             - sh
             - -c
