@@ -20,12 +20,14 @@ agentspec generate agent.yaml --framework langgraph
 
 ## What you can do
 
+> 🔑 = requires an LLM API key &nbsp;·&nbsp; all other commands are **fully local, no API key needed**
+
 - [x] **Define** your agent in a single `agent.yaml` — model, tools, memory, guardrails, prompts
 - [x] **Validate** schema with instant feedback and path-aware errors
 - [x] **Health-check** all runtime dependencies (env vars, model API, Redis, Postgres, MCP servers)
 - [x] **Audit** compliance against OWASP LLM Top 10, model resilience, and memory hygiene packs
-- [x] **Generate** production-ready LangGraph, CrewAI, Mastra, or AutoGen code via Claude
-- [x] **Scan** an existing codebase and auto-generate the manifest
+- [x] 🔑 **Generate** production-ready LangGraph, CrewAI, Mastra, or AutoGen code
+- [x] 🔑 **Scan** an existing codebase and auto-generate the manifest
 - [x] **Evaluate** agent quality against JSONL datasets with CI pass/fail gates
 - [x] **Deploy** to Kubernetes — operator injects sidecar, exposes `/health/ready` and `/gap`
 - [x] **Export** to A2A / AgentCard format
@@ -51,19 +53,19 @@ agentspec generate agent.yaml --framework langgraph
 # Install
 npm install -g @agentspec/cli
 
-# Create a manifest interactively
+# Create a manifest interactively (no API key needed)
 agentspec init
 
-# Or scan an existing codebase
+# Or scan an existing codebase (🔑 requires LLM API key)
 export ANTHROPIC_API_KEY=your-key
 agentspec scan --dir ./src/
 
-# Validate, health-check, audit
+# Validate, health-check, audit (no API key needed)
 agentspec validate agent.yaml
 agentspec health agent.yaml
 agentspec audit agent.yaml
 
-# Generate runnable code (requires ANTHROPIC_API_KEY)
+# Generate runnable code (🔑 requires LLM API key)
 agentspec generate agent.yaml --framework langgraph --output ./generated/
 ```
 

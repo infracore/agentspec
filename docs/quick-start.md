@@ -2,6 +2,17 @@
 
 Get your first AgentSpec manifest validated and health-checked in 5 minutes.
 
+## LLM requirements
+
+Most AgentSpec commands run **fully locally with no API key**. Only two commands call an LLM:
+
+| Command | Requires LLM? | Why |
+|---------|---------------|-----|
+| `validate`, `health`, `audit`, `export`, `diff`, `init` | ✅ No | Pure local logic — schema, probes, rules |
+| `generate` | 🔑 Yes | LLM reasons over your manifest to produce framework code |
+| `scan` | 🔑 Yes | LLM reads your source files to infer the manifest |
+| `evaluate` | ⚡ Indirect | Calls *your agent's* endpoint — uses your agent's own model, not ours |
+
 ## Prerequisites
 
 - [ ] Node.js 20+
@@ -21,7 +32,7 @@ agentspec init
 
 The interactive wizard asks for your agent name, model provider, and which features to enable. It creates `agent.yaml` in the current directory.
 
-### Option B — scan existing code
+### Option B — scan existing code (🔑 requires LLM API key)
 
 Already have an agent codebase? Generate the manifest from source:
 
@@ -31,7 +42,7 @@ agentspec scan --dir ./src/ --dry-run   # preview first
 agentspec scan --dir ./src/             # write agent.yaml
 ```
 
-Claude reads your `.py` / `.ts` / `.js` files and infers model provider, tools, guardrails,
+An LLM reads your `.py` / `.ts` / `.js` files and infers model provider, tools, guardrails,
 memory backend, and required env vars. Review the output — it's a starting point, not a final
 answer.
 
@@ -126,10 +137,10 @@ agentspec audit agent.yaml
 The audit scores your agent against OWASP LLM Top 10 and other compliance packs.
 A minimal agent will score ~45/100 (grade D). Add guardrails, evaluation, and fallback to improve.
 
-## 7. Generate LangGraph code
+## 7. Generate LangGraph code (🔑 requires LLM API key)
 
-Generation uses Claude to reason over your manifest and produce complete, production-ready code.
-Set your Anthropic API key, then run:
+Generation uses an LLM to reason over your manifest and produce complete, production-ready code.
+Set your API key, then run:
 
 ```bash
 export ANTHROPIC_API_KEY=your-api-key-here
