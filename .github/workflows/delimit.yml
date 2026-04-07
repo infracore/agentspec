@@ -1,0 +1,58 @@
+name: Delimit governance
+
+# Delimit governance check for agentspec schema changes (issue #21).
+# Two checks run on every PR that touches the manifest schema or workflow:
+#   1. Generator drift  — runs `pnpm run schema:export` in a sandbox and
+#      diffs the regenerated schemas/v1/agent.schema.json against the
+#      committed file. Catches the case where the Zod source has been
+#      updated but the committed JSON Schema artifact is stale.
+#   2. Schema classification — diffs the committed JSON Schema against
+#      the base branch and classifies each change as breaking or
+#      non-breaking using JSON Schema semantics (property add/remove,
+#      required, type widen/narrow, enum, const, additionalProperties,
+#      pattern, length and numeric bounds).
+#
+# Advisory mode by default — never fails CI. Posts a single PR comment.
+# No API keys, no external services, runs in well under 30 seconds.
+#
+# Pinned to a SHA pending the upcoming v1.9.0 release of delimit-action.
+# Will switch to delimit-ai/delimit-action@v1 once that release ships.
+
+on:
+  pull_request:
+    paths:
+      - 'packages/sdk/src/schema/**'
+      - 'schemas/**'
+      - '.github/workflows/delimit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  delimit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Delimit governance check
+        uses: delimit-ai/delimit-action@1a19928543801504c4fe29a5cff24280d7da88c6
+        with:
+          spec: schemas/v1/agent.schema.json
+          mode: advisory
+          generator_command: pnpm run schema:export
+          generator_artifact: schemas/v1/agent.schema.json
