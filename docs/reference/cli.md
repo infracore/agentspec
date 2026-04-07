@@ -2,6 +2,17 @@
 
 All AgentSpec CLI commands. Run via `agentspec` or install globally: `npm i -g @agentspec/cli`.
 
+## LLM requirements at a glance
+
+| Command | Requires LLM API key? |
+|---------|----------------------|
+| `init`, `validate`, `health`, `audit` | ✅ No — fully local |
+| `export`, `diff`, `migrate` | ✅ No — fully local |
+| `generate` | 🔑 Yes |
+| `scan` | 🔑 Yes |
+| `evaluate` | ✅ No (calls your agent's own endpoint) |
+| `generate --deploy k8s` | ✅ No — deterministic templates |
+
 ## `agentspec init`
 
 Interactive wizard to create `agent.yaml`.
@@ -104,7 +115,7 @@ See [Proof Integration Guide](../guides/proof-integration.md) for how to submit 
 
 ## `agentspec generate`
 
-Generate framework-specific agent code using Claude.
+🔑 **Requires an LLM API key.** Generate framework-specific agent code.
 
 ```bash
 agentspec generate <file> --framework <fw> --output <dir>
@@ -207,7 +218,7 @@ Options:
 
 ## `agentspec scan`
 
-Scan a source directory and generate an `agent.yaml` manifest using Claude.
+🔑 **Requires an LLM API key.** Scan a source directory and generate an `agent.yaml` manifest.
 
 ```bash
 agentspec scan --dir ./src/
