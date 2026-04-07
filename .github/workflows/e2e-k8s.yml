@@ -59,8 +59,8 @@ jobs:
       # ── Pre-load Helm hook image ──────────────────────────────────────────────
       - name: Pre-load check-cert-manager image into kind
         run: |
-          docker pull bitnami/kubectl:1.31
-          kind load docker-image bitnami/kubectl:1.31 --name agentspec
+          docker pull registry.k8s.io/kubectl:v1.31.0
+          kind load docker-image registry.k8s.io/kubectl:v1.31.0 --name agentspec
 
       # ── Helm install operator ─────────────────────────────────────────────────
       - name: Helm install agentspec-operator
