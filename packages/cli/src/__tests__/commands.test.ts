@@ -29,10 +29,11 @@ const {
   mockIsLatestVersion: vi.fn(),
 }))
 
-const { mockWriteFileSync, mockReadFileSync, mockExistsSync } = vi.hoisted(() => ({
+const { mockWriteFileSync, mockReadFileSync, mockExistsSync, mockMkdirSync } = vi.hoisted(() => ({
   mockWriteFileSync: vi.fn(),
   mockReadFileSync: vi.fn(),
   mockExistsSync: vi.fn(),
+  mockMkdirSync: vi.fn(),
 }))
 
 const {
@@ -42,6 +43,9 @@ const {
   mockIntro,
   mockGroup,
   mockOutro,
+  mockSelect,
+  mockText,
+  mockLog,
 } = vi.hoisted(() => ({
   mockConfirm: vi.fn(),
   mockIsCancel: vi.fn(),
@@ -49,6 +53,9 @@ const {
   mockIntro: vi.fn(),
   mockGroup: vi.fn(),
   mockOutro: vi.fn(),
+  mockSelect: vi.fn(),
+  mockText: vi.fn(),
+  mockLog: { warn: vi.fn(), info: vi.fn(), error: vi.fn() },
 }))
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
@@ -67,6 +74,7 @@ vi.mock('node:fs', () => ({
   writeFileSync: mockWriteFileSync,
   readFileSync: mockReadFileSync,
   existsSync: mockExistsSync,
+  mkdirSync: mockMkdirSync,
 }))
 
 vi.mock('@clack/prompts', () => ({
@@ -76,6 +84,9 @@ vi.mock('@clack/prompts', () => ({
   intro: mockIntro,
   group: mockGroup,
   outro: mockOutro,
+  select: mockSelect,
+  text: mockText,
+  log: mockLog,
   spinner: () => ({ start: vi.fn(), stop: vi.fn(), message: vi.fn() }),
 }))
 
@@ -840,25 +851,59 @@ describe('migrate command', () => {
 // ── init command ──────────────────────────────────────────────────────────────
 
 describe('init command', () => {
+  const originalFetch = globalThis.fetch
+
+  beforeEach(() => {
+    // Stub global fetch so fetchAvailableModels returns null (offline fallback)
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error('mocked offline')) as unknown as typeof fetch
+  })
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+  })
+
   async function run(args: string[]): Promise<void> {
     const { registerInitCommand } = await import('../commands/init.js')
     return runCommand(registerInitCommand, ['init', ...args])
   }
 
+  /**
+   * Set up mocks for a full interactive run.
+   * Phase 1 group no longer has modelId — after Phase 1, a model select/text prompt fires.
+   * Pass modelId separately to mock the model selection prompt.
+   */
+  function setupInteractiveMocks(
+    phase1: Record<string, unknown>,
+    phase2: Record<string, unknown>,
+    modelId = 'gpt-4o-mini',
+  ): void {
+    mockGroup
+      .mockResolvedValueOnce(phase1)
+      .mockResolvedValueOnce(phase2)
+    mockIsCancel.mockReturnValue(false)
+    // fetchAvailableModels returns null (mocked offline) → falls back to p.text for model
+    mockText.mockResolvedValueOnce(modelId)
+  }
+
   it('creates agent.yaml with defaults using --yes (file does not exist)', async () => {
     mockExistsSync.mockReturnValue(false)
     await run(['--yes'])
-    expect(mockWriteFileSync).toHaveBeenCalledOnce()
+    // agent.yaml + system.md + .env.example = 3 writeFileSync calls
+    expect(mockWriteFileSync).toHaveBeenCalledTimes(3)
     const content = mockWriteFileSync.mock.calls[0][1] as string
     expect(content).toContain('apiVersion: agentspec.io/v1')
     expect(content).toContain('my-agent')
   })
 
   it('skips overwrite prompt and creates file with --yes even when file exists', async () => {
-    mockExistsSync.mockReturnValue(true)
+    // existsSync: true for agent.yaml check, then false for scaffold files
+    mockExistsSync
+      .mockReturnValueOnce(true)   // agent.yaml exists
+      .mockReturnValueOnce(false)  // system.md does not exist
+      .mockReturnValueOnce(false)  // .env.example does not exist
     await run(['.', '--yes'])
     expect(mockConfirm).not.toHaveBeenCalled()
-    expect(mockWriteFileSync).toHaveBeenCalledOnce()
+    expect(mockWriteFileSync).toHaveBeenCalledTimes(3)
   })
 
   it('creates manifest without memory section by default (--yes)', async () => {
@@ -876,22 +921,20 @@ describe('init command', () => {
   })
 
   it('prompts for overwrite when file exists without --yes', async () => {
-    mockExistsSync.mockReturnValue(true)
+    mockExistsSync
+      .mockReturnValueOnce(true)   // agent.yaml exists
+      .mockReturnValueOnce(false)  // system.md
+      .mockReturnValueOnce(false)  // .env.example
     mockConfirm.mockResolvedValue(true)
     mockIsCancel.mockReturnValue(false)
-    mockGroup.mockResolvedValue({
-      name: 'test-agent',
-      description: 'A test agent',
-      version: '1.0.0',
-      provider: 'openai',
-      modelId: 'gpt-4o',
-      includeMemory: false,
-      includeGuardrails: true,
-      includeEval: false,
-    })
+    setupInteractiveMocks(
+      { name: 'test-agent', description: 'A test agent', version: '1.0.0', provider: 'openai' },
+      { includeMemory: false, includeApi: false, includeObservability: false, includeGuardrails: true, includeEval: false, includeToolsStarter: false },
+      'gpt-4o',
+    )
     await run(['.'])
     expect(mockConfirm).toHaveBeenCalledOnce()
-    expect(mockWriteFileSync).toHaveBeenCalledOnce()
+    expect(mockWriteFileSync).toHaveBeenCalled()
   })
 
   it('cancels init when user declines overwrite (confirm returns false)', async () => {
@@ -913,19 +956,17 @@ describe('init command', () => {
     expect(mockWriteFileSync).not.toHaveBeenCalled()
   })
 
-  it('uses answers from group prompt for manifest content (interactive mode)', async () => {
+  it('uses answers from group prompts for manifest content (interactive mode)', async () => {
     mockExistsSync.mockReturnValue(false)
-    mockGroup.mockResolvedValue({
-      name: 'my-custom-agent',
-      description: 'Custom description',
-      version: '2.0.0',
-      provider: 'anthropic',
-      modelId: 'claude-sonnet-4-6',
-      includeMemory: true,
-      includeGuardrails: false,
-      includeEval: true,
-    })
+    setupInteractiveMocks(
+      { name: 'my-custom-agent', description: 'Custom description', version: '2.0.0', provider: 'anthropic' },
+      { includeMemory: true, includeApi: false, includeObservability: false, includeGuardrails: false, includeEval: true, includeToolsStarter: false },
+      'claude-sonnet-4-6',
+    )
+    // Phase 3: memory backend select
+    mockSelect.mockResolvedValueOnce('in-memory')
     await run(['.'])
+    expect(mockGroup).toHaveBeenCalledTimes(2)
     const content = mockWriteFileSync.mock.calls[0][1] as string
     expect(content).toContain('my-custom-agent')
     expect(content).toContain('anthropic')
@@ -937,16 +978,11 @@ describe('init command', () => {
 
   it('generates ANTHROPIC_API_KEY env var reference for anthropic provider', async () => {
     mockExistsSync.mockReturnValue(false)
-    mockGroup.mockResolvedValue({
-      name: 'claude-agent',
-      description: 'Claude agent',
-      version: '0.1.0',
-      provider: 'anthropic',
-      modelId: 'claude-haiku-4-5-20251001',
-      includeMemory: false,
-      includeGuardrails: false,
-      includeEval: false,
-    })
+    setupInteractiveMocks(
+      { name: 'claude-agent', description: 'Claude agent', version: '0.1.0', provider: 'anthropic' },
+      { includeMemory: false, includeApi: false, includeObservability: false, includeGuardrails: false, includeEval: false, includeToolsStarter: false },
+      'claude-haiku-4-5-20251001',
+    )
     await run(['.'])
     const content = mockWriteFileSync.mock.calls[0][1] as string
     expect(content).toContain('ANTHROPIC_API_KEY')
@@ -958,5 +994,74 @@ describe('init command', () => {
     const out = logOutput()
     expect(out).toContain('Next steps')
     expect(out).toContain('validate')
+  })
+
+  it('creates scaffold files (system.md and .env.example) with --yes', async () => {
+    mockExistsSync.mockReturnValue(false)
+    await run(['--yes'])
+    expect(mockMkdirSync).toHaveBeenCalled()
+    // 3 writes: agent.yaml, system.md, .env.example
+    expect(mockWriteFileSync).toHaveBeenCalledTimes(3)
+    const systemMd = mockWriteFileSync.mock.calls[1][1] as string
+    expect(systemMd).toContain('# My Agent')
+    const envExample = mockWriteFileSync.mock.calls[2][1] as string
+    expect(envExample).toContain('OPENAI_API_KEY')
+  })
+
+  it('skips scaffold files with warning when they already exist', async () => {
+    // agent.yaml does not exist, but scaffold files do
+    mockExistsSync
+      .mockReturnValueOnce(false)  // agent.yaml
+      .mockReturnValueOnce(true)   // system.md exists
+      .mockReturnValueOnce(true)   // .env.example exists
+    await run(['--yes'])
+    // Only agent.yaml should be written
+    expect(mockWriteFileSync).toHaveBeenCalledOnce()
+    expect(mockLog.warn).toHaveBeenCalledTimes(2)
+  })
+
+  it('calls phase 3 select for memory backend when includeMemory is true', async () => {
+    mockExistsSync.mockReturnValue(false)
+    setupInteractiveMocks(
+      { name: 'test', description: 'test', version: '0.1.0', provider: 'openai' },
+      { includeMemory: true, includeApi: false, includeObservability: false, includeGuardrails: false, includeEval: false, includeToolsStarter: false },
+    )
+    // Phase 3: memory backend select
+    mockSelect.mockResolvedValueOnce('redis')
+    await run(['.'])
+    // mockText called once for model (offline fallback), mockSelect once for memory backend
+    expect(mockSelect).toHaveBeenCalledOnce()
+    const content = mockWriteFileSync.mock.calls[0][1] as string
+    expect(content).toContain('backend: redis')
+    expect(content).toContain('$env:REDIS_URL')
+  })
+
+  it('does not call phase 3 select prompts when all phase 2 toggles are false', async () => {
+    mockExistsSync.mockReturnValue(false)
+    setupInteractiveMocks(
+      { name: 'test', description: 'test', version: '0.1.0', provider: 'openai' },
+      { includeMemory: false, includeApi: false, includeObservability: false, includeGuardrails: false, includeEval: false, includeToolsStarter: false },
+    )
+    await run(['.'])
+    // mockText called once for model (offline fallback), no select prompts for phase 3
+    expect(mockSelect).not.toHaveBeenCalled()
+  })
+
+  it('calls phase 3 prompts for API type and port when includeApi is true', async () => {
+    mockExistsSync.mockReturnValue(false)
+    setupInteractiveMocks(
+      { name: 'test', description: 'test', version: '0.1.0', provider: 'openai' },
+      { includeMemory: false, includeApi: true, includeObservability: false, includeGuardrails: false, includeEval: false, includeToolsStarter: false },
+    )
+    // Phase 3: API type select + port text
+    mockSelect.mockResolvedValueOnce('rest')
+    mockText.mockResolvedValueOnce('8080')
+    await run(['.'])
+    expect(mockSelect).toHaveBeenCalledOnce()
+    // mockText: 1 for model (offline fallback) + 1 for port = 2
+    expect(mockText).toHaveBeenCalledTimes(2)
+    const content = mockWriteFileSync.mock.calls[0][1] as string
+    expect(content).toContain('type: rest')
+    expect(content).toContain('port: 8080')
   })
 })
