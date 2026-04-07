@@ -1,0 +1,42 @@
+name: Delimit governance
+
+on:
+  pull_request:
+    paths:
+      - 'packages/sdk/src/schema/**'
+      - 'schemas/**'
+      - '.github/workflows/delimit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  delimit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      # Pin to feature-branch commit during testing. Will switch to
+      # delimit-ai/delimit-action@v1 once v1.9.0 ships.
+      - name: Delimit governance check
+        uses: delimit-ai/delimit-action@e39d384aa705c325917fbe34662941fda94d8b7e
+        with:
+          spec: schemas/v1/agent.schema.json
+          mode: advisory
+          generator_command: pnpm run schema:export
+          generator_artifact: schemas/v1/agent.schema.json

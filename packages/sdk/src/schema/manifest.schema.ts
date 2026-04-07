@@ -564,7 +564,7 @@ const SpecSchema = z.object({
 
 // ── Top-level Manifest ────────────────────────────────────────────────────────
 export const ManifestSchema = z.object({
-  apiVersion: z.literal('agentspec.io/v1'),
+  apiVersion: z.literal('agentspec.io/v1alpha1'),
   kind: z.literal('AgentSpec'),
   metadata: MetadataSchema,
   spec: SpecSchema,
